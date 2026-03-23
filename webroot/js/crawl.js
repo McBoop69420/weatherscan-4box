@@ -77,7 +77,7 @@ function crawlCheck() {
     }
 }
 function teamLogoChip(team, rec, rank) {
-    var logo = team.logo || '';
+    var logo = team.logo || (team.logos && team.logos[0] ? team.logos[0].href : '') || '';
     var abbr = team.abbreviation || '';
     var rankStr = (rank && rank <= 25) ? '<span class="sport-rank">#' + rank + '</span>' : '';
     var img = logo
@@ -156,6 +156,7 @@ var leagueLogos = {
     'MLB':   'https://a.espncdn.com/i/teamlogos/leagues/500-dark/mlb.png',
     'NHL':   'https://a.espncdn.com/i/teamlogos/leagues/500-dark/nhl.png',
     'EPL':   'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png',
+    'World Cup': 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/268.png',
     'NCAAB': 'https://a.espncdn.com/i/teamlogos/leagues/500-dark/mens-college-basketball.png',
     'NCAAW': 'https://a.espncdn.com/i/teamlogos/leagues/500-dark/womens-college-basketball.png',
     'WNBA':  'https://a.espncdn.com/i/teamlogos/leagues/500-dark/wnba.png',
@@ -168,6 +169,7 @@ var leagueBadgeColors = {
     'MLB':   '#002D72',
     'NHL':   '#041E42',
     'EPL':   '#3D195B',
+    'World Cup': '#0057B8',
     'NCAAB': '#C84B00',
     'NCAAW': '#8B0057',
     'WNBA':  '#F05323',
@@ -180,6 +182,7 @@ var leagueTickerColors = {
     'MLB':   '#001c47',
     'NHL':   '#000000',
     'EPL':   '#220e33',
+    'World Cup': '#003D82',
     'NCAAB': '#6b2700',
     'NCAAW': '#4d002f',
     'WNBA':  '#7a2a10',

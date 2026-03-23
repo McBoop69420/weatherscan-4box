@@ -726,7 +726,6 @@ button {
   width: 1620px;
   height: 1080px;
   z-index: 4 !important;
-  filter: drop-shadow(2px 2px 0 #000);
 }
 .satradar-cont {
   position: absolute;
@@ -751,7 +750,6 @@ button {
   width: 1620px;
   height: 1080px;
   z-index: 4 !important;
-  filter: drop-shadow(2px 2px 0 #000);
 }
 .radar-overlay {
   z-index: 8 !important;

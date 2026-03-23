@@ -123,7 +123,7 @@ function createMaps() {
   });
 }
 
-async function fetchRadarTimestamps(map, frameCount) {
+async function fetchRadarTimestamps(map, frameCount = 12) {
   var timestamps =
     map === locradar
       ? loctimestamps
@@ -134,7 +134,8 @@ async function fetchRadarTimestamps(map, frameCount) {
   var mapType = map === satradar ? "sat" : "twcRadarMosaic";
   try {
     const response = await fetch(
-      `https://api.weather.com/v3/TileServer/series/productSet/PPAcore?filter=${mapType}&apiKey=${api_key}`
+      `https://api.weather.com/v3/TileServer/series/productSet/PPAcore?filter=${mapType}&apiKey=${api_key}`,
+      { cache: "no-store" }
     );
     const data = await response.json();
 

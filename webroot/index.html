@@ -4,13 +4,10 @@
   <head>
     <!-- PRELOAD -->
     <link rel="preload" as="style" href="weatherscan.css" />
+    <link rel="preload" as="style" href="dashboard.css" />
     <link rel="preload" as="style" href="utilities/mapbox-gl.css" />
-    <link rel="preload" as="style" href="utilities/maplibre-gl.css" />
-
     <link rel="preload" as="script" href="utilities/mapbox-gl.js" />
     <link rel="preload" as="script" href="utilities/mapbox-gl.js.map" />
-    <link rel="preload" as="script" href="utilities/maplibre-gl.js" />
-    <link rel="preload" as="script" href="utilities/maplibre-gl.js.map" />
     <link rel="preload" as="script" href="utilities/jquery-3.7.1.min.js" />
     <link rel="preload" as="script" href="utilities/jquery.marquee.min.js" />
     <link rel="preload" as="script" href="js/jplayer/jquery.jplayer.min.js" />
@@ -27,6 +24,12 @@
     <link rel="preload" as="script" href="js/data.js" />
     <link rel="preload" as="script" href="js/audio.js" />
     <link rel="preload" as="script" href="js/map.js" />
+    <link rel="preload" as="script" href="js/dashboard-core.js" />
+    <link rel="preload" as="script" href="js/dashboard-sports.js" />
+    <link rel="preload" as="script" href="js/dashboard-weather.js" />
+    <link rel="preload" as="script" href="js/dashboard-calendar.js" />
+    <link rel="preload" as="script" href="js/dashboard-news.js" />
+    <link rel="preload" as="script" href="js/dashboard.js" />
 
     <link rel="preload" as="image" href="images/setup/sethint.png" />
     <link rel="preload" as="image" href="images/setup/setup-swoosh.png" />
@@ -47,14 +50,19 @@
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
 
     <link rel="stylesheet" href="weatherscan.css" />
+    <link rel="stylesheet" href="dashboard.css" />
     <script type="text/javascript" src="utilities/mapbox-gl.js"></script>
     <link rel="stylesheet" href="utilities/mapbox-gl.css"/>
-    <script type="text/javascript" src="utilities/maplibre-gl.js"></script>
-    <link href="utilities/maplibre-gl.css" rel="stylesheet"/>
   </head>
   <body>
     <button id="mute-button" style="position: absolute; top: 10px; right: 10px; z-index: 1000;">
   Mute
+</button>
+    <button id="quit-button" style="position: absolute; top: 48px; right: 10px; z-index: 1000;">
+  Quit
+</button>
+    <button id="refresh-button" style="position: absolute; top: 86px; right: 10px; z-index: 1000;">
+  Refresh
 </button>
     <div id="drag-region"></div>
     <script type="text/javascript" src="utilities/jquery-3.7.1.min.js"></script>
@@ -73,6 +81,12 @@
     <script type="text/javascript" src="js/data.js"></script>
     <script type="text/javascript" src="js/audio.js"></script>
     <script type="text/javascript" src="js/map.js"></script>
+    <script type="text/javascript" src="js/dashboard-core.js"></script>
+    <script type="text/javascript" src="js/dashboard-sports.js"></script>
+    <script type="text/javascript" src="js/dashboard-weather.js"></script>
+    <script type="text/javascript" src="js/dashboard-calendar.js"></script>
+    <script type="text/javascript" src="js/dashboard-news.js"></script>
+    <script type="text/javascript" src="js/dashboard.js"></script>
 
     <div id="settingspanel">
       <img id="setup-hint" src="images//setup//sethint.png"/>
@@ -378,7 +392,41 @@
         </div>
       </div>
 
-      <div id="slides">
+      <!-- 4-Box Dashboard Grid -->
+      <div id="dashboard-grid">
+        <!-- Top Left: Sports -->
+        <div class="dashboard-panel panel-sports">
+          <div class="panel-header">SPORTS</div>
+          <div class="panel-content sports-content">
+            <div class="sports-games-list"></div>
+          </div>
+        </div>
+
+        <!-- Top Right: Calendar/Schedule -->
+        <div class="dashboard-panel panel-calendar">
+          <div class="panel-header">TODAY'S SCHEDULE</div>
+          <div class="panel-content calendar-content">
+            <div class="calendar-date"></div>
+            <div class="calendar-events"></div>
+          </div>
+        </div>
+
+        <!-- Bottom Left: News -->
+        <div class="dashboard-panel panel-news">
+          <div class="panel-header">NEWS</div>
+          <div class="panel-content news-content">
+            <div class="news-feed"></div>
+          </div>
+        </div>
+
+        <!-- Bottom Right: Weather -->
+        <div class="dashboard-panel panel-weather">
+          <div class="panel-header">CURRENT CONDITIONS</div>
+          <div class="panel-content weather-content"></div>
+        </div>
+      </div>
+
+      <div id="slides" style="display: none;">
         <!--RADAR-->
         <div class="radar-doppler" style="display: none">
           <div class="tempunavailable" style="display: none"></div>
@@ -1180,8 +1228,10 @@
     </div>
 
     <div id="provider"><img src="images/tvproviders/Mist.png" /></div>
-   <script>
+<script>
   const muteButton = document.getElementById('mute-button');
+  const quitButton = document.getElementById('quit-button');
+  const refreshButton = document.getElementById('refresh-button');
   let isMuted = false;
 
   muteButton.addEventListener('click', () => {
@@ -1191,6 +1241,16 @@
     });
     isMuted = !isMuted;
     muteButton.textContent = isMuted ? 'Unmute' : 'Mute';
+  });
+
+  quitButton.addEventListener('click', () => {
+    window.close();
+  });
+
+  refreshButton.addEventListener('click', () => {
+    refreshButton.disabled = true;
+    refreshButton.textContent = 'Refreshing...';
+    window.location.reload();
   });
 </script>
   </body>

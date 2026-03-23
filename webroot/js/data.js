@@ -186,6 +186,8 @@ var weatherData = {
     ],
   }
 }
+var dashboardDataRefreshIntervalId = null;
+
 function grabData() {
   //console.log("grabbed data")
   function grabCurrentConditions() {
@@ -1321,6 +1323,25 @@ function startPrograms() {
     $('#startup').fadeOut(0);
   }, 1000);
 }
+
+function isDashboardModeEnabled() {
+  return Boolean(dashboardSettings?.enableCycling);
+}
+
+function startDashboardPrograms() {
+  grabData();
+  if (!dashboardDataRefreshIntervalId) {
+    dashboardDataRefreshIntervalId = setInterval(() => {
+      grabData();
+    }, dashboardSettings?.weatherDataRefreshInterval || 300000);
+  }
+
+  $('#main').fadeIn(0);
+  setTimeout(() => {
+    $('#startup').fadeOut(0);
+  }, 1000);
+}
+
 function dataJS() {
   //time manager
   //var timezoneDifference;
@@ -1337,13 +1358,17 @@ setInterval(
 , 1000);
 
 setTimeout(function() {
-  startPrograms()
-  createMaps()
-  setTimeout(() => {
-    locradar.setCenter([locationConfig.radar.localCoords.lon, locationConfig.radar.localCoords.lat]);
-    regradar.setCenter([locationConfig.radar.regionalCoords.lon, locationConfig.radar.regionalCoords.lat]);
-    satradar.setCenter([locationConfig.radar.regionalCoords.lon, locationConfig.radar.regionalCoords.lat]);
-  }, 500);
+  if (isDashboardModeEnabled()) {
+    startDashboardPrograms();
+  } else {
+    startPrograms()
+    createMaps()
+    setTimeout(() => {
+      locradar.setCenter([locationConfig.radar.localCoords.lon, locationConfig.radar.localCoords.lat]);
+      regradar.setCenter([locationConfig.radar.regionalCoords.lon, locationConfig.radar.regionalCoords.lat]);
+      satradar.setCenter([locationConfig.radar.regionalCoords.lon, locationConfig.radar.regionalCoords.lat]);
+    }, 500);
+  }
   audioPlayer.startPlaying(audioPlayer.playlist, true);
 }, apperanceSettings.startupTime)
 }

@@ -1,9 +1,9 @@
 var locationSettings = {
   mainCity: {
     autoFind: false,
-    displayname:"",
-    type:"postalKey",
-    val:"40517",
+    displayname:"Lexington, KY",
+    type:"geocode",
+    val:"38.0406,-84.5037",
   },
   extraCity: {
     autoFind: false,
