@@ -1,17 +1,8 @@
-![](https://media.discordapp.net/attachments/1339090268263157770/1367899479168122900/banner.png?ex=6816432a&is=6814f1aa&hm=61bea94dd7975435efd6e895f24f90375683b571b88a0b47fac2c7d1d5d33749&=&format=webp&quality=lossless&width=1100&height=200)
+![](https://media.discordapp.net/attachments/1059356760990826536/1367233544291614881/wslocalbannermist.png?ex=68644276&is=6862f0f6&hm=86800e66c65c8b01512b1615f511531b14405e04e60cc53f5b6c508a759649c0&=&format=webp&quality=lossless&width=1860&height=336)
 
 ------------
 
-# Weatherscan-4box
-
-**Weatherscan Local XL - 4-Panel Dashboard Edition**
-
-This is a fork of **Weatherscan Local XL** by ***mist weather media*** with enhanced features:
-- **Standalone Desktop Launcher** - One-click startup with automatic server management
-- **Secure API Key Management** - API keys kept out of version control
-- **Desktop Shortcut Creation** - Easy access from your desktop
-
-Original project: **Weatherscan Local XL** - A simulated recreation of "Weatherscan Local" by The Weather Channel in HTML/CSS/JS
+**Weatherscan Local XL** is a simulated recreation of "Weatherscan Local" by The Weather Channel in HTML/CSS/JS, by ***mist weather media***
 
 Best used with mainland United States locations
 
@@ -20,27 +11,6 @@ Best used with Google Chrome on Windows
 Online demo: [local.weatherscan.net](https://local.weatherscan.net)
 
 © Mist Weather Media 2025.
-
-------------
-
-# New Features in 4box Edition
-
-## Standalone Desktop Launcher
-- **launcher.js** - Automated process management
-  - Starts Express server automatically
-  - Waits for server health check before launching Electron
-  - Manages both processes from a single script
-  - Clean shutdown when app closes
-
-## Easy Setup
-- **Launch Weatherscan.bat** - One-click launcher for Windows
-- **create-shortcut.ps1** - Creates desktop shortcut automatically
-- **config.example.js** - Template for API key configuration
-
-## Security Improvements
-- API keys stored in `config.js` (not tracked in git)
-- `.gitignore` updated to exclude sensitive data
-- Example configuration provided for easy setup
 
 ------------
 
@@ -67,39 +37,14 @@ Are you a developer? Pull requests are welcome! If you find a bug and fix it you
 
 # Initial Setup
 
-1. **Install [Node.js LTS](https://nodejs.org/en/)**
-   - Download and install the latest LTS version
-   - Restart your terminal/command prompt after installation
-
-2. **Acquire API Keys** (required for weather data and radar)
-   - *weather.com* API key - Sign up at [weather.com](https://www.weather.com/)
-   - *mapbox.com* API key - Sign up at [mapbox.com](https://www.mapbox.com/)
-
-3. **Configure API Keys**
-   - Go to `/webroot/js/` folder
-   - Copy `config.example.js` to `config.js`
-   - Open `config.js` in a text editor
-   - Line 1: Replace `"YOUR_WEATHER_COM_API_KEY"` with your weather.com API key
-   - Line 2: Replace `"YOUR_MAPBOX_API_KEY"` with your mapbox.com API key
-   - Save and close `config.js`
-
-4. **Install Dependencies**
-   - Open terminal/command prompt in the project root directory
-   - Run: `npm install`
-   - This installs all required packages
-
-5. **Launch the App**
-
-   **Option A - Easy Desktop Launch (Recommended):**
-   - Double-click `Launch Weatherscan.bat`
-   - Or run `create-shortcut.ps1` to create a desktop shortcut
-   - The launcher automatically starts both the server and desktop app
-
-   **Option B - Manual Launch:**
-   - Run: `npm start` (starts the Express server on port 8080)
-   - In a separate terminal, navigate to `electron-wrapper/`
-   - Run: `npm install` (first time only)
-   - Run: `npm start` (launches the desktop app)
+1. Install [node.js LTS](https://nodejs.org/en/).
+2. Acquire *weather.com* and *mapbox.com* API keys. These are required for weather data and radar frames respectively.
+3. Go to `/webroot/js` and open `config.js`.
+4. Line 1 is where your *weather.com*  API key goes. Replace `"YOUR_API_KEY"` with your *weather.com* API key.
+5. Line 2 is where your *mapbox.com*  API key goes. Replace `"YOUR_API_KEY"` with your *mapbox.com* API key.
+6. Save your changes to `config.js` and close out of it.
+7. In terminal / command prompt within the webroot directory, run `npm install`. This will install all dependencies required to run.
+8. In terminal / command prompt within the webroot directory, run `npm start`. This will start a local web server, which is required to run the sim.
 
 ------------
 

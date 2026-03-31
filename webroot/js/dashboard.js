@@ -1,3 +1,22 @@
+if (typeof window.dashboardSettings === 'undefined') {
+  window.dashboardSettings = {
+    enableCycling: true,
+    sportsCycleTime: 10000,
+    calendarCycleTime: 12000,
+    newsCycleTime: 10000,
+    weatherCycleTime: 15000,
+    transitionSpeed: 500,
+    sportsDataRefreshInterval: 10000,
+    dataRefreshInterval: 30000,
+    staggeredStart: true,
+    staggerDelay: 500,
+    followedTeams: []
+  };
+}
+
+if (typeof window.sportsRawData === 'undefined') {
+  window.sportsRawData = null;
+}
 // 4-Box Dashboard Controller - Cycling Edition
 
 var dashboardUpdateInterval;

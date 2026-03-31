@@ -55,15 +55,11 @@
     <link rel="stylesheet" href="utilities/mapbox-gl.css"/>
   </head>
   <body>
-    <button id="mute-button" style="position: absolute; top: 10px; right: 10px; z-index: 1000;">
-  Mute
-</button>
-    <button id="quit-button" style="position: absolute; top: 48px; right: 10px; z-index: 1000;">
-  Quit
-</button>
-    <button id="refresh-button" style="position: absolute; top: 86px; right: 10px; z-index: 1000;">
-  Refresh
-</button>
+    <div id="window-controls">
+      <button id="mute-button">Mute</button>
+      <button id="quit-button">Quit</button>
+      <button id="refresh-button">Refresh</button>
+    </div>
     <div id="drag-region"></div>
     <script type="text/javascript" src="utilities/jquery-3.7.1.min.js"></script>
     <script type="text/javascript" src="js/jplayer/jquery.jplayer.min.js"></script>
@@ -394,15 +390,21 @@
 
       <!-- 4-Box Dashboard Grid -->
       <div id="dashboard-grid">
-        <!-- Top Left: Sports -->
-        <div class="dashboard-panel panel-sports">
-          <div class="panel-header">SPORTS</div>
-          <div class="panel-content sports-content">
-            <div class="sports-games-list"></div>
+        <!-- Top Left: Weather -->
+        <div class="dashboard-panel panel-weather">
+          <div class="panel-header">CURRENT CONDITIONS</div>
+          <div class="panel-content weather-content"></div>
+        </div>
+
+        <!-- Top Right: News -->
+        <div class="dashboard-panel panel-news">
+          <div class="panel-header">NEWS</div>
+          <div class="panel-content news-content">
+            <div class="news-feed"></div>
           </div>
         </div>
 
-        <!-- Top Right: Calendar/Schedule -->
+        <!-- Bottom Left: Calendar/Schedule -->
         <div class="dashboard-panel panel-calendar">
           <div class="panel-header">TODAY'S SCHEDULE</div>
           <div class="panel-content calendar-content">
@@ -411,18 +413,12 @@
           </div>
         </div>
 
-        <!-- Bottom Left: News -->
-        <div class="dashboard-panel panel-news">
-          <div class="panel-header">NEWS</div>
-          <div class="panel-content news-content">
-            <div class="news-feed"></div>
+        <!-- Bottom Right: Sports -->
+        <div class="dashboard-panel panel-sports">
+          <div class="panel-header">SPORTS</div>
+          <div class="panel-content sports-content">
+            <div class="sports-games-list"></div>
           </div>
-        </div>
-
-        <!-- Bottom Right: Weather -->
-        <div class="dashboard-panel panel-weather">
-          <div class="panel-header">CURRENT CONDITIONS</div>
-          <div class="panel-content weather-content"></div>
         </div>
       </div>
 

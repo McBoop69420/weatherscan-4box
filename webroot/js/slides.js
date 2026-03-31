@@ -30,8 +30,6 @@ var slideDivs = {
   "extraCurrentConditions":".extra-current-conditions",
   "extraDayDesc":"extra-daydesc-forecast",
   "extraExtendedForecast":"extra-extended-forecast",
-
-  "sportsScoreboard": ".sports-scoreboard",
 };
 var slideTitles
 var slideLength = 10000;
@@ -43,77 +41,6 @@ var satround = 0;
 var idx = 0;
 var gidx = 0;
 var htipidx = 0;
-var slideTimeoutIds = new Set();
-var isSchedulingSlideTimeouts = false;
-var nativeSetTimeout = window.setTimeout.bind(window);
-
-window.setTimeout = function(callback, delay, ...args) {
-  const timeoutId = nativeSetTimeout(function(...callbackArgs) {
-    slideTimeoutIds.delete(timeoutId);
-    callback(...callbackArgs);
-  }, delay, ...args);
-
-  if (isSchedulingSlideTimeouts) {
-    slideTimeoutIds.add(timeoutId);
-  }
-
-  return timeoutId;
-};
-
-function clearPendingSlideTimeouts() {
-  slideTimeoutIds.forEach((timeoutId) => clearTimeout(timeoutId));
-  slideTimeoutIds.clear();
-}
-
-function advanceSlideFromKeyboard() {
-  clearPendingSlideTimeouts();
-  $("#provider").css("margin-left", "0px");
-  $("#provider").css("margin-top", "0px");
-  $(".locradar-cont, .regradar-cont, .satradar-cont").attr("style", "");
-  $("#slides > div").fadeOut(0);
-  $(".tempunavailable").fadeOut(0);
-  try {
-    stopRadar();
-  } catch (error) {}
-  idx++;
-  showSlides();
-  return true;
-}
-
-window.advanceClassicSlides = advanceSlideFromKeyboard;
-window.advanceSlidesNow = window.advanceSlidesNow || function() {
-  if (window.advanceWeatherscanDashboardSlide && window.advanceWeatherscanDashboardSlide()) {
-    return true;
-  }
-
-  return advanceSlideFromKeyboard();
-};
-
-function isArrowAdvanceEvent(event) {
-  return (
-    ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Left", "Right", "Up", "Down"].includes(event.key) ||
-    ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.code) ||
-    [37, 38, 39, 40].includes(event.keyCode)
-  );
-}
-
-window.addEventListener("keydown", function(event) {
-  const targetTag = event.target && event.target.tagName ? event.target.tagName.toUpperCase() : "";
-  const isFormField = ["INPUT", "TEXTAREA", "SELECT"].includes(targetTag) || event.target?.isContentEditable;
-
-  if (!isArrowAdvanceEvent(event) || isFormField || event.repeat) {
-    return;
-  }
-
-  if ($("#settingspanel").is(":visible")) {
-    return;
-  }
-
-  event.preventDefault();
-  event.stopPropagation();
-  window.advanceSlidesNow();
-}, true);
-
 function slideCallBack(){
   $("#provider").css("margin-left", "0px");
     $("#provider").css("margin-top", "0px");
@@ -149,6 +76,7 @@ var slidePrograms = {
           $(".locradar-cont").attr("style","transform: scale(1.13, 1.335) translate3d(0,0,0);");
         }
         setTimeout(function () {
+          clearInterval(radarAnimation);
           slideCallBack();
           $(".radar-doppler").fadeOut(0);
           $(".locradar-cont").attr("style","");
@@ -194,6 +122,7 @@ var slidePrograms = {
         $("#provider").css("margin-left", "15px")
         $("#provider").css("margin-top", "5px")
         setTimeout(function () {
+          clearInterval(radarAnimation);
           slideCallBack();
           $(".regional-sat").fadeOut(0);
           $(".satradar-cont").attr("style","");
@@ -238,6 +167,7 @@ var slidePrograms = {
           $(".regradar-cont").attr("style","transform: scale(1.14, 1.335) translate3d(0,0,0);");
         }
         setTimeout(function () {
+          clearInterval(radarAnimation);
           slideCallBack();
           $(".regional-radar").fadeOut(0);
           $(".regradar-cont").attr("style","");
@@ -1296,86 +1226,6 @@ var slidePrograms = {
         }, slideLength);
       }
     },
-    sportsScoreboard() {
-      if (!sportsRawData || sportsRawData.length === 0) {
-        slideCallBack();
-        return;
-      }
-
-      var leagueGroups = [];
-      sportsRawData.forEach(function(leagueData) {
-        if (!leagueData.events) return;
-        var games = [];
-        leagueData.events.forEach(function(event) {
-          try {
-            var comp = event.competitions[0];
-            var state = comp.status.type.state;
-            if (state !== 'in' && state !== 'pre') return;
-            var home = comp.competitors.find(function(c) { return c.homeAway === 'home'; }) || comp.competitors[0];
-            var away = comp.competitors.find(function(c) { return c.homeAway === 'away'; }) || comp.competitors[1];
-            if (!home || !away) return;
-            games.push({ home: home, away: away, status: comp.status, state: state });
-          } catch(e) {}
-        });
-        if (games.length > 0) {
-          leagueGroups.push({ league: leagueData.league, games: games });
-        }
-      });
-
-      if (leagueGroups.length === 0) {
-        slideCallBack();
-        return;
-      }
-
-      var cut1 = Math.ceil(leagueGroups.length / 3);
-      var cut2 = Math.ceil(2 * leagueGroups.length / 3);
-      var leftGroups  = leagueGroups.slice(0, cut1);
-      var midGroups   = leagueGroups.slice(cut1, cut2);
-      var rightGroups = leagueGroups.slice(cut2);
-
-      function buildColHTML(groups) {
-        var html = '';
-        groups.forEach(function(group) {
-          var logoUrl = leagueLogos[group.league];
-          html += '<div class="sb-league-header">';
-          if (logoUrl) html += '<img src="' + logoUrl + '" class="sb-league-logo">';
-          html += '<span class="sb-league-name">' + group.league + '</span></div>';
-          group.games.forEach(function(game) {
-            var awayLogo = game.away.team.logo ? '<img src="' + game.away.team.logo + '" class="sb-team-logo">' : '';
-            var homeLogo = game.home.team.logo ? '<img src="' + game.home.team.logo + '" class="sb-team-logo">' : '';
-            var awayAbbr = game.away.team.abbreviation || '';
-            var homeAbbr = game.home.team.abbreviation || '';
-            var awayRank = game.away.curatedRank && game.away.curatedRank.current <= 25 ? '<span class="sb-rank">#' + game.away.curatedRank.current + '</span>' : '';
-            var homeRank = game.home.curatedRank && game.home.curatedRank.current <= 25 ? '<span class="sb-rank">#' + game.home.curatedRank.current + '</span>' : '';
-            var statusText = game.status.type.shortDetail || (game.state === 'in' ? 'LIVE' : 'TBD');
-            if (game.state === 'pre') {
-              statusText = statusText.replace(/^\d+\/\d+\s*[-–]\s*/, '').replace(/\s+[A-Z]{2,4}$/, '');
-            }
-            var isLive = game.state === 'in';
-            var awayScore = isLive ? '<span class="sb-score">' + (game.away.score !== undefined ? game.away.score : '0') + '</span>' : '';
-            var homeScore = isLive ? '<span class="sb-score">' + (game.home.score !== undefined ? game.home.score : '0') + '</span>' : '';
-            var divider = isLive ? '<div class="sb-divider">-</div>' : '<div class="sb-divider sb-vs">vs</div>';
-            html += '<div class="sb-game">' +
-              '<div class="sb-team away">' + awayLogo + awayRank + '<span class="sb-abbr">' + awayAbbr + '</span>' + awayScore + '</div>' +
-              divider +
-              '<div class="sb-team home">' + homeScore + '<span class="sb-abbr">' + homeAbbr + '</span>' + homeRank + homeLogo + '</div>' +
-              '<div class="sb-status' + (isLive ? ' live' : '') + '">' + statusText + '</div>' +
-              '</div>';
-          });
-        });
-        return html;
-      }
-
-      $('.sports-scoreboard .sb-col.left').html(buildColHTML(leftGroups));
-      $('.sports-scoreboard .sb-col.mid').html(buildColHTML(midGroups));
-      $('.sports-scoreboard .sb-col.right').html(buildColHTML(rightGroups));
-
-      fadeSlideIn('.sports-scoreboard');
-      setTimeout(function() {
-        fadeSlideOut('.sports-scoreboard', 500);
-        slideCallBack();
-      }, slideLength * 2);
-    },
   };
 function slideKickOff() {
   allData();
@@ -1386,14 +1236,10 @@ function slideKickOff() {
     "minicore": "Your Local Forecast",
     "intro": "intro",
     "airport": "Airport",
-    "airportonly": "Airport",
     "golf": "Golf",
     "spanish": "Spanish Forecast",
     "health": "Health",
     "extralocal": "Forecast For " + extraCityName,
-    "main": "Your Local Forecast",
-    "nearby": "Nearby Cities",
-    "sports": "Live Scores",
   };
 } //end of slideKickOff() function
 function showSlides() {
@@ -1413,7 +1259,5 @@ function showSlides() {
   }
   currentProgram = slidePrograms[slideSettings.order[0].slideLineup[gidx].slides[idx].function];
   currentDiv = slideDivs[slideSettings.order[0].slideLineup[gidx].slides[idx].function];
-  isSchedulingSlideTimeouts = true;
   currentProgram();
-  isSchedulingSlideTimeouts = false;
 } //END OF showSlides() FUNCTION

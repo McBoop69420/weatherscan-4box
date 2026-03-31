@@ -140,12 +140,12 @@ function startButton() {
 }
 if (apperanceSettings.skipSettings == true) {
   //if (getCookie("customPackage") == "false") {
-    // Custom order: Main -> Airport -> Extra -> Health -> Nearby
-    slideSettings.order[0].slideLineup.push(mainPackage);
-    slideSettings.order[0].slideLineup.push(airportOnlyPackage);
+    slideSettings.order[0].slideLineup.push(forecastPackage);
     slideSettings.order[0].slideLineup.push(extraLocalPackage);
+    slideSettings.order[0].slideLineup.push(spanishForecastPackage);
+    slideSettings.order[0].slideLineup.push(golfPackage);
     slideSettings.order[0].slideLineup.push(healthPackage);
-    slideSettings.order[0].slideLineup.push(nearbyCitiesPackage);
+    slideSettings.order[0].slideLineup.push(airportPackage);
   //}
   setTimeout(() => {
     locationJS();
@@ -161,6 +161,11 @@ if (apperanceSettings.skipSettings == true) {
     $("#setup-welcome").fadeIn(0);
   }, 1000);
 }
+if (apperanceSettings.adMessage[0] == "network") {
+      $.getJSON("https://mistwx.com/crawlnetwork.json", function(data) {
+        apperanceSettings.adMessage = data.crawls.scanlocal
+      })
+    }
 function welcomefuncs(type) {
   if (type == "proceed") {
     $("#setup-welcome").fadeOut(0);
@@ -226,9 +231,11 @@ function downloadTempJson() {
 
 }
 function jsonsaveButton() {
-  var dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(locationSettings));
+  var jsonText = {jsonLocationSettings: {}}
+  jsonText.jsonLocationSettings = locationSettings
+  var dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(jsonText));
   var downloadAnchorNode = document.createElement('a');
-  downloadAnchorNode.setAttribute("href",     dataStr);
+  downloadAnchorNode.setAttribute("href",      dataStr);
   downloadAnchorNode.setAttribute("download", "config.json");
   document.body.appendChild(downloadAnchorNode); // required for firefox
   downloadAnchorNode.click();

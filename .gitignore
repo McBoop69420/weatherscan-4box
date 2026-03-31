@@ -141,11 +141,12 @@ dist
 # macOS metadata
 .DS_Store
 
-# API keys - use config.example.js as template
+# Local config with real API keys
 webroot/js/config.js
 
-# Claude Code temporary files
+# Local assistant and migration artifacts
+.claude/
+.codex-tmp/
+.migration-backups/
 tmpclaude-*
-
-# Local Claude settings
-.claude/settings.local.json
+electron-wrapper/tmpclaude-*

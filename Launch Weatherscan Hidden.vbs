@@ -3,6 +3,6 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 
 projectRoot = fso.GetParentFolderName(WScript.ScriptFullName)
 nodePath = "C:\Program Files\nodejs\node.exe"
-command = "cmd /c cd /d """ & projectRoot & """ && """ & nodePath & """ launcher.js"
+command = "cmd /c cd /d """ & projectRoot & """ && start """" /b """ & nodePath & """ launcher.js"
 
 shell.Run command, 0, False

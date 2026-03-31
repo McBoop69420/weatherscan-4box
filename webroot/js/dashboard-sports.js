@@ -5,6 +5,9 @@ var standingsCache = {};
 var bracketCache = {};
 var followedTeamNewsCache = {};
 var teamFormCache = {};
+var followedTeamPreviousDaySportsData = [];
+var followedTeamPreviousDaySportsDataKey = '';
+const SPORTS_DASHBOARD_TIME_ZONE = 'America/New_York';
 const DEFAULT_FOLLOWED_TEAMS = [
   { name: 'Cincinnati Reds', abbreviation: 'CIN', league: 'MLB', label: "TODAY'S REDS GAME", theme: 'reds' },
   { name: 'FC Cincinnati', abbreviation: 'CIN', aliases: ['FCC', 'FC CINCINNATI'], league: 'MLS', label: "TODAY'S FC CINCINNATI MATCH", theme: 'fcc' },
@@ -44,7 +47,9 @@ const LEAGUE_DEFS = [
   { name: 'UEFA CL',    logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2.png' },
   { name: 'World Cup',  logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/268.png' },
   { name: 'UEFA EL',    logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2310.png' },
+  { name: 'UEFA Conference League', logo: '' },
   { name: 'Concacaf Champions Cup', logo: '', generic: false },
+  { name: 'FA Cup',     logo: '' },
   { name: 'MLS',        logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/19.png' },
   { name: 'NWSL',       logo: '' },
   { name: 'USL',        logo: '' },
@@ -63,6 +68,8 @@ const SOCCER_LEAGUES = new Set([
   'UEFA CL',
   'World Cup',
   'UEFA EL',
+  'UEFA Conference League',
+  'FA Cup',
   'MLS',
   'NWSL',
   'USL',
@@ -107,6 +114,8 @@ async function initSportsCycler() {
       console.warn('[Sports] Could not fetch sports data:', e);
     }
   }
+
+  await ensureFollowedTeamPreviousDaySportsData(getFollowedTeams());
 
   const activeFollowedTeams = getActiveFollowedTeams();
   await refreshFollowedTeamContext(activeFollowedTeams);
@@ -251,6 +260,48 @@ function getFollowedTeams() {
   return DEFAULT_FOLLOWED_TEAMS;
 }
 
+function getEasternDashboardTimeParts(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SPORTS_DASHBOARD_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hour12: false
+  });
+
+  return formatter.formatToParts(date).reduce((parts, part) => {
+    if (part.type !== 'literal') {
+      parts[part.type] = part.value;
+    }
+    return parts;
+  }, {});
+}
+
+function formatUtcDateKey(date) {
+  return `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, '0')}${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+function getFollowedTeamDisplayWindow(date = new Date()) {
+  const parts = getEasternDashboardTimeParts(date);
+  const easternTodayAtNoonUtc = new Date(Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    12,
+    0,
+    0
+  ));
+  const previousDayUtc = new Date(easternTodayAtNoonUtc);
+  previousDayUtc.setUTCDate(previousDayUtc.getUTCDate() - 1);
+
+  return {
+    usePreviousDayResults: (Number(parts.hour) % 24) < 12,
+    todayKey: `${parts.year}${parts.month}${parts.day}`,
+    previousDayKey: formatUtcDateKey(previousDayUtc)
+  };
+}
+
 function isMatchingTeam(team, followedTeam) {
   if (!team || !followedTeam) {
     return false;
@@ -272,14 +323,126 @@ function isMatchingTeam(team, followedTeam) {
   return followedNames.some((followedName) => teamNames.includes(followedName));
 }
 
-function getFollowedTeamGame(followedTeam) {
-  const leagueName = followedTeam?.league || 'MLB';
-  const leagueGames = getGamesForLeague(leagueName, 24);
-
-  return leagueGames.find((gameData) => {
+function getMatchingFollowedTeamGames(followedTeam, games = []) {
+  return games.filter((gameData) => {
     const competitors = gameData?.event?.competitions?.[0]?.competitors || [];
     return competitors.some((competitor) => isMatchingTeam(competitor.team, followedTeam));
-  }) || null;
+  });
+}
+
+function getGameState(gameData) {
+  return String(gameData?.event?.status?.type?.state || '').toLowerCase();
+}
+
+function sortGamesByDate(games = [], direction = 'asc') {
+  const multiplier = direction === 'desc' ? -1 : 1;
+  return [...games].sort((gameA, gameB) => {
+    const valueA = new Date(gameA?.event?.date || 0).getTime();
+    const valueB = new Date(gameB?.event?.date || 0).getTime();
+    return (valueA - valueB) * multiplier;
+  });
+}
+
+function getPreferredCurrentDayFollowedTeamGame(games = []) {
+  const liveGame = sortGamesByDate(games.filter((gameData) => getGameState(gameData) === 'in'))[0];
+  if (liveGame) {
+    return liveGame;
+  }
+
+  const upcomingGame = sortGamesByDate(games.filter((gameData) => getGameState(gameData) === 'pre'))[0];
+  if (upcomingGame) {
+    return upcomingGame;
+  }
+
+  return sortGamesByDate(games.filter((gameData) => getGameState(gameData) === 'post'), 'desc')[0] || null;
+}
+
+function getMostRecentCompletedFollowedTeamGame(games = []) {
+  return sortGamesByDate(
+    games.filter((gameData) => getGameState(gameData) === 'post' || Boolean(gameData?.event?.status?.type?.completed)),
+    'desc'
+  )[0] || null;
+}
+
+async function ensureFollowedTeamPreviousDaySportsData(followedTeams = getFollowedTeams()) {
+  const displayWindow = getFollowedTeamDisplayWindow();
+  if (!displayWindow.usePreviousDayResults) {
+    return followedTeamPreviousDaySportsData;
+  }
+
+  const leagueNames = [...new Set(
+    (Array.isArray(followedTeams) ? followedTeams : [])
+      .map((followedTeam) => followedTeam?.league)
+      .filter(Boolean)
+  )];
+  const cacheKey = `${displayWindow.previousDayKey}:${leagueNames.slice().sort().join('|')}`;
+
+  if (followedTeamPreviousDaySportsDataKey === cacheKey) {
+    return followedTeamPreviousDaySportsData;
+  }
+
+  if (leagueNames.length === 0) {
+    followedTeamPreviousDaySportsData = [];
+    followedTeamPreviousDaySportsDataKey = cacheKey;
+    return followedTeamPreviousDaySportsData;
+  }
+
+  try {
+    followedTeamPreviousDaySportsData = await fetchSportsData({
+      dateOffset: -1,
+      leagues: leagueNames,
+      raw: true
+    });
+    followedTeamPreviousDaySportsDataKey = cacheKey;
+  } catch (error) {
+    console.warn('[Sports] Previous-day favorite feed fetch failed:', error);
+    followedTeamPreviousDaySportsData = [];
+    followedTeamPreviousDaySportsDataKey = '';
+  }
+
+  return followedTeamPreviousDaySportsData;
+}
+
+function getFollowedTeamPreviousDayGames(followedTeam, maxGames = 24) {
+  const leagueName = followedTeam?.league || 'MLB';
+  return getGamesForLeagueFromData(followedTeamPreviousDaySportsData, leagueName, maxGames, (event) => {
+    const state = String(event?.status?.type?.state || '').toLowerCase();
+    return state === 'post' || Boolean(event?.status?.type?.completed);
+  });
+}
+
+function getFollowedTeamGameSelection(followedTeam) {
+  const leagueName = followedTeam?.league || 'MLB';
+  const currentGames = getMatchingFollowedTeamGames(followedTeam, getGamesForLeague(leagueName, 24));
+  const displayWindow = getFollowedTeamDisplayWindow();
+  if (displayWindow.usePreviousDayResults) {
+    const previousDayGame = getMostRecentCompletedFollowedTeamGame(getMatchingFollowedTeamGames(
+      followedTeam,
+      getFollowedTeamPreviousDayGames(followedTeam, 24)
+    ));
+    if (previousDayGame) {
+      return {
+        gameData: previousDayGame,
+        window: 'previous',
+        source: 'previous-result'
+      };
+    }
+  }
+
+  const currentDayGame = getPreferredCurrentDayFollowedTeamGame(currentGames);
+  if (!currentDayGame) {
+    return null;
+  }
+
+  return {
+    gameData: currentDayGame,
+    window: 'today',
+    source: `today-${getGameState(currentDayGame) || 'scheduled'}`
+  };
+}
+
+function getFollowedTeamGame(followedTeam) {
+  return getFollowedTeamGameSelection(followedTeam)?.gameData || null;
 }
 
 function getActiveFollowedTeams() {
@@ -291,10 +454,11 @@ function getActiveFollowedTeams() {
 
   const activeItems = followedTeams
     .map((followedTeam) => {
-      const gameData = getFollowedTeamGame(followedTeam);
-      return gameData ? {
+      const selection = getFollowedTeamGameSelection(followedTeam);
+      return selection?.gameData ? {
         followedTeam,
-        gameData,
+        gameData: selection.gameData,
+        selectionContext: selection,
         originalIndex: followedTeams.findIndex((team) => team === followedTeam)
       } : null;
     })
@@ -466,7 +630,8 @@ function isMarchMadnessEvent(event, leagueName) {
 }
 
 function shouldRenderKnockoutBracketSlide(leagueName) {
-  const alwaysKnockoutLeagues = ['Concacaf Champions Cup', 'World Cup', 'WBC'];
+  const roundBasedKnockoutLeagues = ['UEFA CL', 'UEFA EL', 'UEFA Conference League'];
+  const alwaysKnockoutLeagues = ['Concacaf Champions Cup', 'FA Cup', 'World Cup', 'WBC'];
   const games = getGamesForLeague(leagueName, 16);
   const hasMarchMadnessGames = MARCH_MADNESS_LEAGUES.has(leagueName)
     && games.some((gameData) => isMarchMadnessEvent(gameData?.event, leagueName));
@@ -475,9 +640,21 @@ function shouldRenderKnockoutBracketSlide(leagueName) {
     return true;
   }
 
-  return (['UEFA CL', 'UEFA EL'].includes(leagueName) || alwaysKnockoutLeagues.includes(leagueName))
-    && isKnockoutSeasonType(getLeagueSeasonType(leagueName))
-    && games.length > 0;
+  if (!(roundBasedKnockoutLeagues.includes(leagueName) || alwaysKnockoutLeagues.includes(leagueName)) || games.length === 0) {
+    return false;
+  }
+
+  if (isKnockoutSeasonType(getLeagueSeasonType(leagueName))) {
+    return true;
+  }
+
+  return games.some((gameData) => {
+    const event = gameData?.event || {};
+    const competition = event?.competitions?.[0] || {};
+    const roundLabel = normalizeKnockoutRoundLabel(getKnockoutRoundLabel(event, competition, ''), '');
+
+    return Boolean(roundLabel) && getKnockoutRoundSortValue(roundLabel) < 400;
+  });
 }
 
 function hasStandingsForLeagueItems(leagueItems) {
@@ -486,7 +663,7 @@ function hasStandingsForLeagueItems(leagueItems) {
 
 function hasUsableMarchMadnessBracket(leagueName) {
   const bracketData = bracketCache[leagueName];
-  return Boolean(bracketData && Array.isArray(bracketData.regions) && bracketData.regions.length > 0);
+  return hasMarchMadnessBracketGames(bracketData);
 }
 
 function getRelevantStandingsGroupsForLeagueItems(leagueItems) {
@@ -524,6 +701,63 @@ function getConferenceStandingsGroups(standingsData, leagueName) {
     return [];
   }
 
+  const sortConferenceEntries = (entries) => {
+    const safeEntries = Array.isArray(entries) ? [...entries] : [];
+
+    if (leagueName === 'NHL') {
+      return safeEntries.sort((a, b) => {
+        const pointsA = Number(getEntryStat(a, ['points', 'PTS', 'P'])?.value ?? getEntryStat(a, ['points', 'PTS', 'P'])?.displayValue ?? -1);
+        const pointsB = Number(getEntryStat(b, ['points', 'PTS', 'P'])?.value ?? getEntryStat(b, ['points', 'PTS', 'P'])?.displayValue ?? -1);
+        if (pointsA !== pointsB) {
+          return pointsB - pointsA;
+        }
+
+        const winPctA = Number(getEntryStat(a, ['winPercent', 'winpercent', 'PCT'])?.value ?? getEntryStat(a, ['winPercent', 'winpercent', 'PCT'])?.displayValue ?? -1);
+        const winPctB = Number(getEntryStat(b, ['winPercent', 'winpercent', 'PCT'])?.value ?? getEntryStat(b, ['winPercent', 'winpercent', 'PCT'])?.displayValue ?? -1);
+        if (winPctA !== winPctB) {
+          return winPctB - winPctA;
+        }
+
+        const winsA = Number(getEntryStat(a, ['wins', 'W'])?.value ?? getEntryStat(a, ['wins', 'W'])?.displayValue ?? -1);
+        const winsB = Number(getEntryStat(b, ['wins', 'W'])?.value ?? getEntryStat(b, ['wins', 'W'])?.displayValue ?? -1);
+        if (winsA !== winsB) {
+          return winsB - winsA;
+        }
+
+        return String(a?.team?.displayName || a?.team?.shortDisplayName || '').localeCompare(
+          String(b?.team?.displayName || b?.team?.shortDisplayName || '')
+        );
+      });
+    }
+
+    return safeEntries.sort((a, b) => {
+      const rankA = Number(getEntryStat(a, ['rank', 'playoffSeed', 'POS', 'SEED'])?.value ?? Number.MAX_SAFE_INTEGER);
+      const rankB = Number(getEntryStat(b, ['rank', 'playoffSeed', 'POS', 'SEED'])?.value ?? Number.MAX_SAFE_INTEGER);
+      return rankA - rankB;
+    });
+  };
+
+  const conferenceOrder = (conferenceName) => {
+    const normalizedName = String(conferenceName || '').toLowerCase();
+
+    if (leagueName === 'NHL') {
+      if (normalizedName.includes('western')) return 0;
+      if (normalizedName.includes('eastern')) return 1;
+    }
+
+    if (leagueName === 'NBA') {
+      if (normalizedName.includes('eastern')) return 0;
+      if (normalizedName.includes('western')) return 1;
+    }
+
+    if (leagueName === 'NFL') {
+      if (normalizedName.includes('afc')) return 0;
+      if (normalizedName.includes('nfc')) return 1;
+    }
+
+    return Number.MAX_SAFE_INTEGER;
+  };
+
   return standingsData.children
     .map((conference) => {
       const nestedGroups = Array.isArray(conference.children) ? conference.children : [];
@@ -540,18 +774,29 @@ function getConferenceStandingsGroups(standingsData, leagueName) {
         entries.map((entry) => [entry?.team?.id || `${conference.name}-${entry?.team?.displayName || ''}`, entry])
       ).values());
 
-      dedupedEntries.sort((a, b) => {
-        const rankA = Number(getEntryStat(a, ['rank', 'playoffSeed', 'POS', 'SEED'])?.value ?? Number.MAX_SAFE_INTEGER);
-        const rankB = Number(getEntryStat(b, ['rank', 'playoffSeed', 'POS', 'SEED'])?.value ?? Number.MAX_SAFE_INTEGER);
-        return rankA - rankB;
-      });
-
       return {
         name: conference.name || conference.displayName || 'Conference',
-        entries: dedupedEntries
+        entries: sortConferenceEntries(dedupedEntries)
       };
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .sort((a, b) => {
+      const orderA = conferenceOrder(a.name);
+      const orderB = conferenceOrder(b.name);
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+}
+
+function getMaxStandingsGroupsForLeague(leagueName) {
+  if (leagueName === 'MLB') {
+    return 6;
+  }
+
+  return 4;
 }
 
 function getLeagueStandingsGroupsForSlides(leagueItems) {
@@ -572,7 +817,7 @@ function getLeagueStandingsGroupsForSlides(leagueItems) {
     }, leagueName)
   }));
 
-  if (allGroups.length > 0 && allGroups.length <= 4) {
+  if (allGroups.length > 0 && allGroups.length <= getMaxStandingsGroupsForLeague(leagueName)) {
     return allGroups;
   }
 
@@ -589,7 +834,7 @@ function getLeagueStandingsSourceGroups(leagueItems) {
   const sourceGroups = getConferenceStandingsGroups(standingsData, leagueName);
   const allGroups = sourceGroups.length > 0 ? sourceGroups : getStandingsGroups(standingsData);
 
-  if (allGroups.length > 0 && allGroups.length <= 4) {
+  if (allGroups.length > 0 && allGroups.length <= getMaxStandingsGroupsForLeague(leagueName)) {
     return allGroups;
   }
 
@@ -601,7 +846,12 @@ function getLeagueStandingsSourceGroups(leagueItems) {
 
 function getFavoriteLeagueStandingsSlides(leagueItems) {
   const groups = getLeagueStandingsGroupsForSlides(leagueItems);
+  const leagueName = leagueItems?.[0]?.followedTeam?.league;
   const slides = [];
+
+  if (leagueName === 'MLB' && groups.length >= 6) {
+    return [() => renderFavoriteLeagueStandingsSlide(leagueItems, groups)];
+  }
 
   for (let i = 0; i < groups.length; i += 2) {
     const groupChunk = groups.slice(i, i + 2);
@@ -670,10 +920,26 @@ function getSoccerRoundupSlideData(activeFollowedTeams) {
     .filter(Boolean);
 }
 
-async function fetchSportsData() {
+async function fetchSportsData(options = {}) {
+  const params = new URLSearchParams();
+  const parsedOffset = Number(options?.dateOffset);
+  if (Number.isFinite(parsedOffset) && parsedOffset !== 0) {
+    params.set('dateOffset', String(parsedOffset));
+  }
+
+  if (Array.isArray(options?.leagues) && options.leagues.length > 0) {
+    params.set('leagues', options.leagues.join(','));
+  }
+
+  if (options?.raw) {
+    params.set('raw', '1');
+  }
+
+  const url = params.toString() ? `/sports?${params.toString()}` : '/sports';
+
   return new Promise((resolve, reject) => {
     $.ajax({
-      url: '/sports',
+      url,
       dataType: 'json',
       cache: false
     }).done(resolve).fail(reject);
@@ -940,8 +1206,13 @@ function formatStandingsRecord(entry, leagueName) {
   }
 
   if (leagueName === 'NHL' || leagueName === 'PWHL') {
-    const draws = getEntryStat(entry, ['OTLosses', 'otlosses', 'OTL'])?.displayValue || '0';
-    return `${wins}-${draws}-${losses}`;
+    const seasonRecord = getEntryStat(entry, ['total'])?.summary;
+    if (seasonRecord) {
+      return seasonRecord;
+    }
+
+    const overtimeLosses = getEntryStat(entry, ['OTLosses', 'otlosses', 'OTL', 'overtimeLosses'])?.displayValue || '0';
+    return `${wins}-${losses}-${overtimeLosses}`;
   }
 
   if (ties && ties !== '0') {
@@ -1016,10 +1287,21 @@ function getStandingsRows(groupData, leagueName) {
   });
 }
 
+function getStandingsRowLimit(groupName, leagueName) {
+  if (leagueName === 'NHL' && /division/i.test(String(groupName || ''))) {
+    return 5;
+  }
+
+  return null;
+}
+
 function getFullStandingsRows(groupData, leagueName) {
   if (!groupData?.entries?.length) return [];
 
-  return groupData.entries.map((entry, index) => {
+  const rowLimit = getStandingsRowLimit(groupData?.name, leagueName);
+  const entries = rowLimit ? groupData.entries.slice(0, rowLimit) : groupData.entries;
+
+  return entries.map((entry, index) => {
     const rank = getEntryStat(entry, ['rank', 'playoffSeed', 'POS', 'SEED'])?.displayValue || String(index + 1);
     return {
       teamName: entry.team?.shortDisplayName || entry.team?.displayName || entry.team?.abbreviation || 'Team',
@@ -1033,6 +1315,99 @@ function getFullStandingsRows(groupData, leagueName) {
       isFollowed: Boolean(getFollowedTeams().some((followedTeam) => followedTeam.league === leagueName && isMatchingTeam(entry.team, followedTeam)))
     };
   });
+}
+
+function getStandingsStatText(entry, names, fallback = '-') {
+  const stat = getEntryStat(entry, names);
+  if (!stat) {
+    return fallback;
+  }
+
+  const value = [stat.summary, stat.displayValue, stat.value].find((candidate) => (
+    candidate !== null
+    && candidate !== undefined
+    && String(candidate).trim() !== ''
+  ));
+
+  return value !== undefined ? String(value).trim() : fallback;
+}
+
+function isNhlDivisionStandingsGroup(groupData, leagueName) {
+  return leagueName === 'NHL' && /division/i.test(String(groupData?.name || ''));
+}
+
+function getDetailedNhlStandingsRows(groupData, leagueName) {
+  if (!isNhlDivisionStandingsGroup(groupData, leagueName) || !groupData?.entries?.length) {
+    return [];
+  }
+
+  const rowLimit = getStandingsRowLimit(groupData?.name, leagueName);
+  const entries = rowLimit ? groupData.entries.slice(0, rowLimit) : groupData.entries;
+
+  return entries.map((entry) => {
+    const lastTenRaw = getStandingsStatText(entry, ['lasttengames', 'L10'], '-');
+
+    return {
+      teamName: entry.team?.shortDisplayName || entry.team?.displayName || entry.team?.abbreviation || 'Team',
+      logo: entry.team?.logos?.[0]?.href || '',
+      gamesPlayed: getStandingsStatText(entry, ['gamesPlayed', 'GP']),
+      wins: getStandingsStatText(entry, ['wins', 'W']),
+      losses: getStandingsStatText(entry, ['losses', 'L']),
+      overtimeLosses: getStandingsStatText(entry, ['OTLosses', 'otlosses', 'OTL', 'overtimeLosses']),
+      points: getStandingsStatText(entry, ['points', 'PTS', 'P']),
+      goalsFor: getStandingsStatText(entry, ['pointsFor', 'GF']),
+      goalsAgainst: getStandingsStatText(entry, ['pointsAgainst', 'GA']),
+      goalDiff: getStandingsStatText(entry, ['pointDifferential', 'pointsDiff', 'DIFF']).replace(/^\+/, ''),
+      lastTen: String(lastTenRaw).split(',')[0].trim() || '-',
+      streak: getStandingsStatText(entry, ['streak', 'STRK']),
+      isFollowed: Boolean(getFollowedTeams().some((followedTeam) => followedTeam.league === leagueName && isMatchingTeam(entry.team, followedTeam)))
+    };
+  });
+}
+
+function renderDetailedNhlStandingsTableMarkup(groupData, leagueName) {
+  const rows = getDetailedNhlStandingsRows(groupData, leagueName);
+  if (rows.length === 0) {
+    return '';
+  }
+
+  return `
+    <div class="sports-nhl-standings-table">
+      <div class="sports-nhl-standings-grid sports-nhl-standings-header-row">
+        <div class="sports-nhl-standings-header-cell sports-nhl-standings-header-cell--team">Team</div>
+        <div class="sports-nhl-standings-header-cell">GP</div>
+        <div class="sports-nhl-standings-header-cell">W</div>
+        <div class="sports-nhl-standings-header-cell">L</div>
+        <div class="sports-nhl-standings-header-cell">OTL</div>
+        <div class="sports-nhl-standings-header-cell sports-nhl-standings-header-cell--points">Pts</div>
+        <div class="sports-nhl-standings-header-cell">GF</div>
+        <div class="sports-nhl-standings-header-cell">GA</div>
+        <div class="sports-nhl-standings-header-cell">Diff</div>
+        <div class="sports-nhl-standings-header-cell">L10</div>
+        <div class="sports-nhl-standings-header-cell">Strk</div>
+      </div>
+      <div class="sports-nhl-standings-body">
+        ${rows.map((row) => `
+          <div class="sports-nhl-standings-grid sports-nhl-standings-row${row.isFollowed ? ' sports-nhl-standings-row--followed' : ''}">
+            <div class="sports-nhl-standings-cell sports-nhl-standings-cell--team">
+              <img class="sports-nhl-standings-logo" src="${row.logo}" alt="${row.teamName}" onerror="this.style.display='none'">
+              <div class="sports-nhl-standings-team-name">${row.teamName}</div>
+            </div>
+            <div class="sports-nhl-standings-cell">${row.gamesPlayed}</div>
+            <div class="sports-nhl-standings-cell">${row.wins}</div>
+            <div class="sports-nhl-standings-cell">${row.losses}</div>
+            <div class="sports-nhl-standings-cell">${row.overtimeLosses}</div>
+            <div class="sports-nhl-standings-cell sports-nhl-standings-cell--points">${row.points}</div>
+            <div class="sports-nhl-standings-cell">${row.goalsFor}</div>
+            <div class="sports-nhl-standings-cell">${row.goalsAgainst}</div>
+            <div class="sports-nhl-standings-cell">${row.goalDiff}</div>
+            <div class="sports-nhl-standings-cell">${row.lastTen}</div>
+            <div class="sports-nhl-standings-cell">${row.streak}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
 }
 
 function renderStandingsFormMarkup(formTokens) {
@@ -1056,7 +1431,6 @@ function renderStandingsRowMarkup(row) {
 
   return `
     <div class="${rowClass}">
-      <div class="sports-standings-rank">${row.rank}</div>
       <img class="sports-standings-logo" src="${row.logo}" alt="${row.teamName}" onerror="this.style.display='none'">
       <div class="sports-standings-team">${row.teamName}</div>
       ${row.isSoccer ? `<div class="sports-standings-gp">${row.gamesPlayed || '-'}</div>` : ''}
@@ -1075,12 +1449,46 @@ function getFollowedTeamHeadlineItems(followedTeam) {
   return [...localItems, ...nationalItems];
 }
 
+function getCompetitorSummaryStatValue(competitor, statKeys = [], fallbackValue = '0') {
+  if (!competitor || !Array.isArray(statKeys) || statKeys.length === 0) {
+    return fallbackValue;
+  }
+
+  const normalizedKeys = statKeys
+    .map((key) => String(key || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  const directKey = normalizedKeys.find((key) => (
+    Object.prototype.hasOwnProperty.call(competitor, key)
+    && competitor[key] !== null
+    && competitor[key] !== undefined
+    && String(competitor[key]).trim() !== ''
+  ));
+  if (directKey) {
+    return String(competitor[directKey]);
+  }
+
+  const stats = Array.isArray(competitor.statistics) ? competitor.statistics : [];
+  const matchingStat = stats.find((stat) => {
+    const statName = String(stat?.name || '').trim().toLowerCase();
+    const statAbbreviation = String(stat?.abbreviation || '').trim().toLowerCase();
+    return normalizedKeys.includes(statName) || normalizedKeys.includes(statAbbreviation);
+  });
+
+  if (matchingStat) {
+    return String(matchingStat.displayValue ?? matchingStat.value ?? fallbackValue);
+  }
+
+  return fallbackValue;
+}
+
 function getLineScoreData(gameData) {
   const competition = gameData?.event?.competitions?.[0];
   const competitors = competition?.competitors || [];
   const homeTeam = competitors.find((competitor) => competitor.homeAway === 'home');
   const awayTeam = competitors.find((competitor) => competitor.homeAway === 'away');
   const status = gameData?.event?.status?.type?.state || '';
+  const isBaseball = isBaseballLeague(gameData?.league);
 
   if (status !== 'in' || !homeTeam || !awayTeam) {
     return null;
@@ -1100,19 +1508,284 @@ function getLineScoreData(gameData) {
     home: homeLines[index]?.displayValue || homeLines[index]?.value || ''
   }));
 
+  const summaryColumns = isBaseball
+    ? [
+        { label: 'R', emphasis: true },
+        { label: 'H', emphasis: false },
+        { label: 'E', emphasis: false }
+      ]
+    : [
+        { label: 'T', emphasis: true }
+      ];
+
   return {
     periods,
+    summaryColumns,
     awayTeam: {
       name: awayTeam.team?.shortDisplayName || awayTeam.team?.abbreviation || awayTeam.team?.displayName || 'Away',
       logo: getTeamLogoUrl(awayTeam.team),
-      total: awayTeam.score || '0'
+      total: awayTeam.score || '0',
+      summaryValues: isBaseball
+        ? [
+            getCompetitorSummaryStatValue(awayTeam, ['score', 'runs', 'r']),
+            getCompetitorSummaryStatValue(awayTeam, ['hits', 'h']),
+            getCompetitorSummaryStatValue(awayTeam, ['errors', 'e'])
+          ]
+        : [awayTeam.score || '0']
     },
     homeTeam: {
       name: homeTeam.team?.shortDisplayName || homeTeam.team?.abbreviation || homeTeam.team?.displayName || 'Home',
       logo: getTeamLogoUrl(homeTeam.team),
-      total: homeTeam.score || '0'
+      total: homeTeam.score || '0',
+      summaryValues: isBaseball
+        ? [
+            getCompetitorSummaryStatValue(homeTeam, ['score', 'runs', 'r']),
+            getCompetitorSummaryStatValue(homeTeam, ['hits', 'h']),
+            getCompetitorSummaryStatValue(homeTeam, ['errors', 'e'])
+          ]
+        : [homeTeam.score || '0']
     }
   };
+}
+
+function formatBaseOccupancyText(details) {
+  const occupiedBases = [
+    details?.onFirst ? '1st' : null,
+    details?.onSecond ? '2nd' : null,
+    details?.onThird ? '3rd' : null
+  ].filter(Boolean);
+
+  if (occupiedBases.length === 0) {
+    return 'Bases Empty';
+  }
+
+  if (occupiedBases.length === 3) {
+    return 'Bases Loaded';
+  }
+
+  if (occupiedBases.length === 2) {
+    return `${occupiedBases[0]} & ${occupiedBases[1]}`;
+  }
+
+  return occupiedBases[0];
+}
+
+function renderLineScoreGridMarkup(lineScore, options = {}) {
+  if (!lineScore) {
+    return '';
+  }
+
+  const compact = Boolean(options.compact);
+  const summaryColumns = Array.isArray(lineScore.summaryColumns) && lineScore.summaryColumns.length > 0
+    ? lineScore.summaryColumns
+    : [{ label: 'T', emphasis: true }];
+  const hasExpandedSummary = summaryColumns.length > 1;
+  const teamColumnWidth = compact
+    ? (hasExpandedSummary ? 'minmax(0, 1fr)' : 'minmax(0, 1.2fr)')
+    : (hasExpandedSummary ? 'minmax(0, 1.2fr)' : 'minmax(0, 1.4fr)');
+  const periodColumnWidth = compact
+    ? (hasExpandedSummary ? 'minmax(24px, 0.9fr)' : 'minmax(28px, 1fr)')
+    : (hasExpandedSummary ? 'minmax(30px, 0.9fr)' : 'minmax(34px, 1fr)');
+  const summaryColumnWidth = compact
+    ? (hasExpandedSummary ? 'minmax(28px, 0.75fr)' : 'minmax(38px, 0.7fr)')
+    : (hasExpandedSummary ? 'minmax(34px, 0.8fr)' : 'minmax(42px, 0.8fr)');
+  const summaryColumnTemplate = summaryColumns.map(() => summaryColumnWidth).join(' ');
+
+  return `
+    <div class="sports-linescore-grid${compact ? ' sports-linescore-grid--compact' : ''}" style="grid-template-columns: ${teamColumnWidth} repeat(${lineScore.periods.length}, ${periodColumnWidth}) ${summaryColumnTemplate};">
+      <div class="sports-linescore-cell sports-linescore-cell--head sports-linescore-cell--team">TEAM</div>
+      ${lineScore.periods.map((period) => `<div class="sports-linescore-cell sports-linescore-cell--head">${period.label}</div>`).join('')}
+      ${summaryColumns.map((column) => `<div class="sports-linescore-cell sports-linescore-cell--head">${column.label}</div>`).join('')}
+
+      <div class="sports-linescore-cell sports-linescore-cell--teamrow">
+        <img class="sports-linescore-logo" src="${lineScore.awayTeam.logo}" alt="${lineScore.awayTeam.name}" onerror="this.style.display='none'">
+        <span class="sports-linescore-team">${lineScore.awayTeam.name}</span>
+      </div>
+      ${lineScore.periods.map((period) => `<div class="sports-linescore-cell">${period.away}</div>`).join('')}
+      ${summaryColumns.map((column, index) => `
+        <div class="sports-linescore-cell${hasExpandedSummary ? ' sports-linescore-cell--summary' : ''}${column.emphasis ? ' sports-linescore-cell--total' : ''}">${lineScore.awayTeam.summaryValues?.[index] ?? '-'}</div>
+      `).join('')}
+
+      <div class="sports-linescore-cell sports-linescore-cell--teamrow">
+        <img class="sports-linescore-logo" src="${lineScore.homeTeam.logo}" alt="${lineScore.homeTeam.name}" onerror="this.style.display='none'">
+        <span class="sports-linescore-team">${lineScore.homeTeam.name}</span>
+      </div>
+      ${lineScore.periods.map((period) => `<div class="sports-linescore-cell">${period.home}</div>`).join('')}
+      ${summaryColumns.map((column, index) => `
+        <div class="sports-linescore-cell${hasExpandedSummary ? ' sports-linescore-cell--summary' : ''}${column.emphasis ? ' sports-linescore-cell--total' : ''}">${lineScore.homeTeam.summaryValues?.[index] ?? '-'}</div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderFeaturedLiveBaseballStateMarkup(gameData, lineScore = null) {
+  const details = getBaseballLiveDetails(gameData);
+  if (!details) {
+    return '';
+  }
+
+  const competition = gameData?.event?.competitions?.[0];
+  const competitors = Array.isArray(competition?.competitors) ? competition.competitors : [];
+  const homeTeam = competitors.find((competitor) => String(competitor?.homeAway || '').toLowerCase() === 'home');
+  const awayTeam = competitors.find((competitor) => String(competitor?.homeAway || '').toLowerCase() === 'away');
+  const awayBatting = /^top/i.test(details.inningState);
+  const homeBatting = /^bot/i.test(details.inningState) || /^bottom/i.test(details.inningState);
+  const battingTeam = awayBatting ? awayTeam : (homeBatting ? homeTeam : null);
+  const battingTeamName = battingTeam?.team?.shortDisplayName
+    || battingTeam?.team?.abbreviation
+    || battingTeam?.team?.displayName
+    || 'At Bat';
+  const stateMetrics = [
+    { label: 'Balls', value: details.balls },
+    { label: 'Strikes', value: details.strikes },
+    { label: 'Outs', value: details.outs }
+  ];
+
+  return `
+    <div class="sports-team-linescore sports-team-linescore--live-state">
+      <div class="sports-team-news-title">CURRENT GAME STATE</div>
+      <div class="sports-feature-live-state">
+        <div class="sports-feature-live-state-diamond-wrap">
+          ${renderBaseballDiamondMarkup(details)}
+          <div class="sports-feature-live-state-bases-label">Runners</div>
+          <div class="sports-feature-live-state-bases-value">${formatBaseOccupancyText(details)}</div>
+        </div>
+        <div class="sports-feature-live-state-main">
+          <div class="sports-feature-live-state-label">Batting Now</div>
+          <div class="sports-feature-live-state-team">${battingTeamName}</div>
+          <div class="sports-feature-live-state-phase">${details.inningState}</div>
+        </div>
+        <div class="sports-feature-live-state-side">
+          <div class="sports-feature-live-state-counts">
+            ${stateMetrics.map((metric) => `
+              <div class="sports-feature-live-state-metric">
+                <span class="sports-feature-live-state-metric-label">${metric.label}</span>
+                <span class="sports-feature-live-state-metric-value">${metric.value === null || metric.value === undefined ? '-' : metric.value}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="sports-feature-live-state-players">
+            <div class="sports-feature-live-state-player">
+              <span class="sports-feature-live-state-player-label">Batter</span>
+              <span class="sports-feature-live-state-player-value">${details.batterName}</span>
+            </div>
+            <div class="sports-feature-live-state-player">
+              <span class="sports-feature-live-state-player-label">Pitcher</span>
+              <span class="sports-feature-live-state-player-value">${details.pitcherName}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      ${lineScore ? `
+        <div class="sports-feature-live-state-linescore-label">RUNS BY INNING</div>
+        ${renderLineScoreGridMarkup(lineScore, { compact: true })}
+      ` : ''}
+    </div>
+  `;
+}
+
+function getBaseballFinalHomeRunCountMap(gameData) {
+  if (!isBaseballLeague(gameData?.league)) {
+    return null;
+  }
+
+  const homeRuns = getTrustedBaseballFinalHomeRuns(gameData);
+
+  if (homeRuns.length === 0) {
+    return null;
+  }
+
+  return homeRuns.reduce((map, entry) => {
+    const teamKey = String(entry?.teamAbbreviation || '').trim().toUpperCase();
+    if (!teamKey) {
+      return map;
+    }
+
+    const countValue = Number(entry?.count);
+    map[teamKey] = (map[teamKey] || 0) + (Number.isFinite(countValue) && countValue > 0 ? countValue : 1);
+    return map;
+  }, {});
+}
+
+const POSTGAME_STAT_METADATA = {
+  R: { detailLabel: 'Runs' },
+  H: { detailLabel: 'Hits' },
+  E: { detailLabel: 'Errors', lowerIsBetter: true },
+  AVG: { detailLabel: 'Batting Avg.' },
+  ERA: { detailLabel: 'Pitching ERA', lowerIsBetter: true },
+  HR: { detailLabel: 'Home Runs' },
+  LOB: { detailLabel: 'Left On Base', compare: false },
+  SV: { detailLabel: 'Saves', compare: false },
+  YDS: { detailLabel: 'Total Yards' },
+  PASS: { detailLabel: 'Pass Yards' },
+  RUSH: { detailLabel: 'Rush Yards' },
+  TO: { detailLabel: 'Turnovers', lowerIsBetter: true },
+  '1STD': { detailLabel: '1st Downs' },
+  'FG%': { detailLabel: 'Field Goal %' },
+  '3PT%': { detailLabel: '3-Point %' },
+  REB: { detailLabel: 'Rebounds' },
+  AST: { detailLabel: 'Assists' },
+  SOG: { detailLabel: 'Shots on Goal' },
+  PP: { detailLabel: 'Power Play' },
+  PIM: { detailLabel: 'Penalty Minutes', lowerIsBetter: true },
+  'FO%': { detailLabel: 'Faceoff %' },
+  HITS: { detailLabel: 'Hits' },
+  POS: { detailLabel: 'Possession' },
+  S: { detailLabel: 'Shots' },
+  FC: { detailLabel: 'Fouls', lowerIsBetter: true },
+  YC: { detailLabel: 'Yellow Cards', lowerIsBetter: true }
+};
+
+function getPostGameStatMetadata(label) {
+  const key = String(label || '').trim().toUpperCase();
+  return POSTGAME_STAT_METADATA[key] || {};
+}
+
+function parsePostGameComparableValue(value) {
+  const text = String(value ?? '').trim();
+  if (!text) {
+    return null;
+  }
+
+  const ratioMatch = text.match(/^(-?(?:\d+\.?\d*|\.\d+))\s*\/\s*(-?(?:\d+\.?\d*|\.\d+))$/);
+  if (ratioMatch) {
+    const numerator = Number(ratioMatch[1]);
+    const denominator = Number(ratioMatch[2]);
+    if (Number.isFinite(numerator) && Number.isFinite(denominator) && denominator !== 0) {
+      return numerator / denominator;
+    }
+  }
+
+  const cleaned = text.replace(/,/g, '').replace(/%$/, '').trim();
+  if (/^-?(?:\d+\.?\d*|\.\d+)$/.test(cleaned)) {
+    return Number(cleaned);
+  }
+
+  return null;
+}
+
+function getPostGameStatWinner(label, featuredValue, opponentValue) {
+  const { lowerIsBetter = false, compare = true } = getPostGameStatMetadata(label);
+  if (compare === false) {
+    return null;
+  }
+
+  const featuredNumber = parsePostGameComparableValue(featuredValue);
+  const opponentNumber = parsePostGameComparableValue(opponentValue);
+
+  if (!Number.isFinite(featuredNumber) || !Number.isFinite(opponentNumber)) {
+    return null;
+  }
+
+  if (Math.abs(featuredNumber - opponentNumber) < 0.0001) {
+    return 'tie';
+  }
+
+  if (lowerIsBetter) {
+    return featuredNumber < opponentNumber ? 'featured' : 'opponent';
+  }
+
+  return featuredNumber > opponentNumber ? 'featured' : 'opponent';
 }
 
 function getPostGameStatsData(gameData, followedTeam = null) {
@@ -1121,6 +1794,7 @@ function getPostGameStatsData(gameData, followedTeam = null) {
   const homeTeam = competitors.find((competitor) => competitor.homeAway === 'home');
   const awayTeam = competitors.find((competitor) => competitor.homeAway === 'away');
   const status = gameData?.event?.status?.type?.state || '';
+  const expandedStatsLimit = 8;
 
   if (status !== 'post' || !homeTeam || !awayTeam) {
     return null;
@@ -1132,6 +1806,13 @@ function getPostGameStatsData(gameData, followedTeam = null) {
     return null;
   }
 
+  const homeStatsByAbbr = homeStats.reduce((map, stat) => {
+    const key = String(stat?.abbreviation || stat?.name || '').toUpperCase();
+    if (key) {
+      map[key] = stat;
+    }
+    return map;
+  }, {});
   const awayStatsByAbbr = awayStats.reduce((map, stat) => {
     const key = String(stat?.abbreviation || stat?.name || '').toUpperCase();
     if (key) {
@@ -1139,10 +1820,29 @@ function getPostGameStatsData(gameData, followedTeam = null) {
     }
     return map;
   }, {});
+  const homeTeamAbbreviation = String(homeTeam?.team?.abbreviation || homeTeam?.team?.shortDisplayName || '').toUpperCase();
+  const awayTeamAbbreviation = String(awayTeam?.team?.abbreviation || awayTeam?.team?.shortDisplayName || '').toUpperCase();
+  const baseballHomeRunCounts = getBaseballFinalHomeRunCountMap(gameData);
+  const homeDerivedStatsByAbbr = baseballHomeRunCounts && homeTeamAbbreviation
+    ? {
+        HR: {
+          abbreviation: 'HR',
+          displayValue: String(baseballHomeRunCounts[homeTeamAbbreviation] || 0)
+        }
+      }
+    : {};
+  const awayDerivedStatsByAbbr = baseballHomeRunCounts && awayTeamAbbreviation
+    ? {
+        HR: {
+          abbreviation: 'HR',
+          displayValue: String(baseballHomeRunCounts[awayTeamAbbreviation] || 0)
+        }
+      }
+    : {};
 
   const preferredOrders = {
-    MLB: ['R', 'H', 'E', 'AVG', 'ERA', 'LOB'],
-    'College Baseball': ['R', 'H', 'E', 'AVG', 'ERA', 'LOB'],
+    MLB: ['R', 'H', 'E', 'AVG', 'ERA', 'HR', 'LOB', 'SV'],
+    'College Baseball': ['R', 'H', 'E', 'AVG', 'ERA', 'HR', 'LOB', 'SV'],
     NFL: ['YDS', 'PASS', 'RUSH', 'TO', '1STD'],
     NCAAB: ['FG%', '3PT%', 'REB', 'AST', 'TO'],
     NCAAW: ['FG%', '3PT%', 'REB', 'AST', 'TO'],
@@ -1151,7 +1851,10 @@ function getPostGameStatsData(gameData, followedTeam = null) {
     MLS: ['POS', 'S', 'SOG', 'FC', 'YC'],
     EPL: ['POS', 'S', 'SOG', 'FC', 'YC'],
     'UEFA CL': ['POS', 'S', 'SOG', 'FC', 'YC'],
+    'UEFA EL': ['POS', 'S', 'SOG', 'FC', 'YC'],
+    'UEFA Conference League': ['POS', 'S', 'SOG', 'FC', 'YC'],
     'World Cup': ['POS', 'S', 'SOG', 'FC', 'YC'],
+    'FA Cup': ['POS', 'S', 'SOG', 'FC', 'YC'],
     'Concacaf Champions Cup': ['POS', 'S', 'SOG', 'FC', 'YC'],
   };
 
@@ -1160,11 +1863,13 @@ function getPostGameStatsData(gameData, followedTeam = null) {
   const selected = [];
 
   preferredOrder.forEach((abbr) => {
-    const homeStat = homeStats.find((stat) => String(stat?.abbreviation || '').toUpperCase() === abbr);
-    const awayStat = awayStatsByAbbr[abbr];
+    const homeStat = homeStatsByAbbr[abbr] || homeDerivedStatsByAbbr[abbr];
+    const awayStat = awayStatsByAbbr[abbr] || awayDerivedStatsByAbbr[abbr];
+    const label = homeStat?.abbreviation || awayStat?.abbreviation || homeStat?.name || awayStat?.name || abbr;
     if (homeStat && awayStat) {
       selected.push({
-        label: homeStat.abbreviation || homeStat.name || abbr,
+        label,
+        detailLabel: getPostGameStatMetadata(label).detailLabel || '',
         homeValue: homeStat.displayValue || '',
         awayValue: awayStat.displayValue || ''
       });
@@ -1175,12 +1880,14 @@ function getPostGameStatsData(gameData, followedTeam = null) {
     homeStats.forEach((homeStat) => {
       const abbr = String(homeStat?.abbreviation || homeStat?.name || '').toUpperCase();
       const awayStat = awayStatsByAbbr[abbr];
-      if (!awayStat || selected.length >= 5) {
+      if (!awayStat || selected.length >= expandedStatsLimit) {
         return;
       }
 
+      const label = homeStat?.abbreviation || awayStat?.abbreviation || homeStat?.name || awayStat?.name || abbr;
       selected.push({
-        label: homeStat.abbreviation || homeStat.name || abbr,
+        label,
+        detailLabel: getPostGameStatMetadata(label).detailLabel || '',
         homeValue: homeStat.displayValue || '',
         awayValue: awayStat.displayValue || ''
       });
@@ -1202,7 +1909,17 @@ function getPostGameStatsData(gameData, followedTeam = null) {
 
   const featuredStats = Array.isArray(featuredTeam.statistics) ? featuredTeam.statistics : [];
   const opponentStats = Array.isArray(opponentTeam.statistics) ? opponentTeam.statistics : [];
+  const featuredIsHome = String(featuredTeam.homeAway || '').toLowerCase() === 'home';
+  const featuredDerivedStatsByAbbr = featuredIsHome ? homeDerivedStatsByAbbr : awayDerivedStatsByAbbr;
+  const opponentDerivedStatsByAbbr = featuredIsHome ? awayDerivedStatsByAbbr : homeDerivedStatsByAbbr;
   const featuredStatsByAbbr = featuredStats.reduce((map, stat) => {
+    const key = String(stat?.abbreviation || stat?.name || '').toUpperCase();
+    if (key) {
+      map[key] = stat;
+    }
+    return map;
+  }, {});
+  const opponentStatsByAbbr = opponentStats.reduce((map, stat) => {
     const key = String(stat?.abbreviation || stat?.name || '').toUpperCase();
     if (key) {
       map[key] = stat;
@@ -1212,10 +1929,18 @@ function getPostGameStatsData(gameData, followedTeam = null) {
 
   const orientedStats = selected.map((stat) => {
     const key = String(stat.label || '').toUpperCase();
+    const featuredValue = featuredStatsByAbbr[key]?.displayValue
+      || featuredDerivedStatsByAbbr[key]?.displayValue
+      || (featuredIsHome ? stat.homeValue : stat.awayValue);
+    const opponentValue = opponentStatsByAbbr[key]?.displayValue
+      || opponentDerivedStatsByAbbr[key]?.displayValue
+      || (featuredIsHome ? stat.awayValue : stat.homeValue);
     return {
       label: stat.label,
-      featuredValue: featuredStatsByAbbr[key]?.displayValue || stat.awayValue,
-      opponentValue: opponentStats.find((entry) => String(entry?.abbreviation || entry?.name || '').toUpperCase() === key)?.displayValue || stat.homeValue
+      detailLabel: stat.detailLabel,
+      featuredValue,
+      opponentValue,
+      winner: getPostGameStatWinner(stat.label, featuredValue, opponentValue)
     };
   });
 
@@ -1228,8 +1953,36 @@ function getPostGameStatsData(gameData, followedTeam = null) {
       name: opponentTeam.team?.shortDisplayName || opponentTeam.team?.abbreviation || opponentTeam.team?.displayName || 'Opponent',
       logo: getTeamLogoUrl(opponentTeam.team)
     },
-    stats: orientedStats.slice(0, 5)
+    stats: orientedStats.slice(0, expandedStatsLimit)
   };
+}
+
+function getPostGameStatsSupplementalItems(gameData) {
+  if (!isBaseballLeague(gameData?.league)) {
+    return [];
+  }
+
+  const details = getBaseballFinalDetails(gameData);
+  if (!details) {
+    return [];
+  }
+
+  const supplementalItems = [];
+  if (details.decisions.length > 0) {
+    supplementalItems.push({
+      label: 'DECISIONS',
+      value: details.decisions.map((decision) => `${decision.label} ${decision.name}`).join(' | ')
+    });
+  }
+
+  if (details.scoringSummaryText && details.scoringSummaryLabel) {
+    supplementalItems.push({
+      label: details.scoringSummaryLabel,
+      value: details.scoringSummaryText
+    });
+  }
+
+  return supplementalItems;
 }
 
 function getCompetitionNoteText(competition) {
@@ -1362,6 +2115,7 @@ function getMarchMadnessBranding(leagueName, seasonType) {
 }
 
 function getBracketRegionSortValue(regionName = '') {
+  const normalizedRegionName = String(regionName || '').toUpperCase();
   const order = {
     SOUTH: 1,
     EAST: 2,
@@ -1377,7 +2131,54 @@ function getBracketRegionSortValue(regionName = '') {
     'SPOKANE 2': 4
   };
 
-  return order[String(regionName || '').toUpperCase()] || 99;
+  const numberedRegionalMatch = normalizedRegionName.match(/^REGIONAL\s+(\d+)$/);
+  if (numberedRegionalMatch) {
+    return Number(numberedRegionalMatch[1]);
+  }
+
+  return order[normalizedRegionName] || 99;
+}
+
+function getMarchMadnessRegionRoundCounts(region = {}) {
+  return {
+    firstRound: Array.isArray(region?.firstRound) ? region.firstRound.length : 0,
+    secondRound: Array.isArray(region?.secondRound) ? region.secondRound.length : 0,
+    sweet16: Array.isArray(region?.sweet16) ? region.sweet16.length : 0,
+    elite8: Array.isArray(region?.elite8) ? region.elite8.length : 0
+  };
+}
+
+function hasMarchMadnessBracketGames(bracketData) {
+  if (!bracketData) {
+    return false;
+  }
+
+  const regionalGameCount = Array.isArray(bracketData.regions)
+    ? bracketData.regions.reduce((total, region) => {
+      const roundCounts = getMarchMadnessRegionRoundCounts(region);
+      return total + roundCounts.firstRound + roundCounts.secondRound + roundCounts.sweet16 + roundCounts.elite8;
+    }, 0)
+    : 0;
+
+  const lateGameCount = ['firstFour', 'finalFour', 'championship']
+    .reduce((total, roundKey) => total + (Array.isArray(bracketData?.[roundKey]) ? bracketData[roundKey].length : 0), 0);
+
+  return regionalGameCount + lateGameCount > 0;
+}
+
+function getMarchMadnessRegionStage(region) {
+  const roundCounts = getMarchMadnessRegionRoundCounts(region);
+  const hasEarlyRounds = roundCounts.firstRound > 0 || roundCounts.secondRound > 0;
+
+  if (!hasEarlyRounds && roundCounts.elite8 > 0 && roundCounts.sweet16 === 0) {
+    return 'elite8';
+  }
+
+  if (!hasEarlyRounds && (roundCounts.sweet16 > 0 || roundCounts.elite8 > 0)) {
+    return 'late';
+  }
+
+  return 'early';
 }
 
 function getMarchMadnessBracketData(leagueName) {
@@ -1394,8 +2195,173 @@ function getMarchMadnessBracketData(leagueName) {
   };
 }
 
+function hasMarchMadnessTeamScore(team) {
+  return /^\d+$/.test(String(team?.score || '').trim());
+}
+
+function getMarchMadnessGameCompletenessScore(game) {
+  if (!game) {
+    return -1;
+  }
+
+  let score = 0;
+  if (game?.event) score += 2;
+  if (game?.competition) score += 2;
+  if (hasMarchMadnessTeamScore(game?.away) && hasMarchMadnessTeamScore(game?.home)) score += 4;
+  if (game?.isFinal) score += 2;
+  if (String(game?.statusText || '').trim()) score += 1;
+  return score;
+}
+
+function normalizeMarchMadnessTeamName(name = '') {
+  return String(name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function areMarchMadnessTeamsLikelySame(teamA, teamB) {
+  const nameA = normalizeMarchMadnessTeamName(teamA?.team);
+  const nameB = normalizeMarchMadnessTeamName(teamB?.team);
+  if (!nameA || !nameB) {
+    return false;
+  }
+
+  if (nameA === nameB) {
+    return true;
+  }
+
+  const seedA = String(teamA?.seed || '').trim();
+  const seedB = String(teamB?.seed || '').trim();
+  return Boolean(seedA && seedB && seedA === seedB && (nameA.includes(nameB) || nameB.includes(nameA)));
+}
+
+function alignMarchMadnessGameOrientation(referenceGame, candidateGame) {
+  if (!referenceGame || !candidateGame) {
+    return candidateGame;
+  }
+
+  if (
+    areMarchMadnessTeamsLikelySame(referenceGame.away, candidateGame.home)
+    && areMarchMadnessTeamsLikelySame(referenceGame.home, candidateGame.away)
+  ) {
+    return {
+      ...candidateGame,
+      away: candidateGame.home,
+      home: candidateGame.away
+    };
+  }
+
+  return candidateGame;
+}
+
+function mergeMarchMadnessTeamData(primaryTeam, supplementalTeam) {
+  const primaryHasScore = hasMarchMadnessTeamScore(primaryTeam);
+  const supplementalHasScore = hasMarchMadnessTeamScore(supplementalTeam);
+
+  return {
+    seed: primaryTeam?.seed || supplementalTeam?.seed || '',
+    team: primaryTeam?.team || supplementalTeam?.team || 'TBD',
+    score: primaryHasScore
+      ? primaryTeam.score
+      : (supplementalHasScore ? supplementalTeam.score : (primaryTeam?.score || supplementalTeam?.score || ''))
+  };
+}
+
+function mergeMarchMadnessGameData(primaryGame, supplementalGame) {
+  if (!primaryGame) {
+    return supplementalGame;
+  }
+
+  if (!supplementalGame) {
+    return primaryGame;
+  }
+
+  const alignedSupplementalGame = alignMarchMadnessGameOrientation(primaryGame, supplementalGame);
+  const preferredGame = getMarchMadnessGameCompletenessScore(primaryGame) >= getMarchMadnessGameCompletenessScore(alignedSupplementalGame)
+    ? primaryGame
+    : alignedSupplementalGame;
+  const fallbackGame = preferredGame === primaryGame ? alignedSupplementalGame : primaryGame;
+
+  return {
+    ...fallbackGame,
+    ...preferredGame,
+    event: preferredGame?.event || fallbackGame?.event,
+    competition: preferredGame?.competition || fallbackGame?.competition,
+    statusText: preferredGame?.statusText || fallbackGame?.statusText || '',
+    isFinal: Boolean(preferredGame?.isFinal || fallbackGame?.isFinal),
+    away: mergeMarchMadnessTeamData(preferredGame?.away, fallbackGame?.away),
+    home: mergeMarchMadnessTeamData(preferredGame?.home, fallbackGame?.home)
+  };
+}
+
+function mergeMarchMadnessRoundGames(primaryGames = [], supplementalGames = [], orderingFn = null) {
+  const orderedPrimaryGames = orderingFn ? orderingFn(primaryGames) : [...(Array.isArray(primaryGames) ? primaryGames : [])];
+  const orderedSupplementalGames = orderingFn ? orderingFn(supplementalGames) : [...(Array.isArray(supplementalGames) ? supplementalGames : [])];
+  const mergedGames = [];
+  const maxLength = Math.max(orderedPrimaryGames.length, orderedSupplementalGames.length);
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const mergedGame = mergeMarchMadnessGameData(orderedPrimaryGames[index], orderedSupplementalGames[index]);
+    if (mergedGame) {
+      mergedGames.push(mergedGame);
+    }
+  }
+
+  return mergedGames;
+}
+
+function mergeMarchMadnessBracketData(primaryData, supplementalData) {
+  if (!primaryData) {
+    return supplementalData;
+  }
+
+  if (!supplementalData) {
+    return primaryData;
+  }
+
+  const primaryRegions = Array.isArray(primaryData.regions) ? primaryData.regions : [];
+  const supplementalRegions = Array.isArray(supplementalData.regions) ? supplementalData.regions : [];
+  const supplementalRegionMap = new Map(
+    supplementalRegions.map((region) => [normalizeMarchMadnessRegionName(region?.name), region])
+  );
+  const mergedRegions = primaryRegions.map((region) => {
+    const supplementalRegion = supplementalRegionMap.get(normalizeMarchMadnessRegionName(region?.name));
+    if (!supplementalRegion) {
+      return region;
+    }
+
+    return {
+      ...region,
+      firstRound: mergeMarchMadnessRoundGames(region?.firstRound || [], supplementalRegion.firstRound || [], orderMarchMadnessFirstRoundGames),
+      secondRound: mergeMarchMadnessRoundGames(region?.secondRound || [], supplementalRegion.secondRound || [], orderMarchMadnessSecondRoundGames),
+      sweet16: mergeMarchMadnessRoundGames(region?.sweet16 || [], supplementalRegion.sweet16 || [], orderMarchMadnessSecondRoundGames),
+      elite8: mergeMarchMadnessRoundGames(region?.elite8 || [], supplementalRegion.elite8 || [], orderMarchMadnessSecondRoundGames)
+    };
+  });
+  const supplementalOnlyRegions = supplementalRegions.filter((region) => (
+    !primaryRegions.some((candidate) => normalizeMarchMadnessRegionName(candidate?.name) === normalizeMarchMadnessRegionName(region?.name))
+  ));
+
+  return {
+    ...primaryData,
+    regions: [...mergedRegions, ...supplementalOnlyRegions].sort((a, b) => (
+      getBracketRegionSortValue(a.name) - getBracketRegionSortValue(b.name)
+    )),
+    finalFour: mergeMarchMadnessRoundGames(primaryData?.finalFour || [], supplementalData?.finalFour || []),
+    championship: mergeMarchMadnessRoundGames(primaryData?.championship || [], supplementalData?.championship || [])
+  };
+}
+
+function getMarchMadnessCompositeBracketData(leagueName) {
+  const primaryData = getMarchMadnessBracketData(leagueName);
+  const supplementalData = getMarchMadnessScoreboardBracketData(leagueName);
+  const mergedData = mergeMarchMadnessBracketData(primaryData, supplementalData);
+  return hasMarchMadnessBracketGames(mergedData) ? mergedData : null;
+}
+
 function getMarchMadnessStage(leagueName) {
-  const bracketData = getMarchMadnessBracketData(leagueName);
+  const bracketData = getMarchMadnessCompositeBracketData(leagueName);
   if (!bracketData) {
     return 'regional';
   }
@@ -1424,17 +2390,57 @@ function getMarchMadnessStage(leagueName) {
   return 'regional';
 }
 
+function getMarchMadnessRegionalSlideRenderers(leagueName, regions = []) {
+  const slides = [];
+  let pendingLateRegion = null;
+
+  const flushPendingLateRegion = () => {
+    if (!pendingLateRegion) {
+      return;
+    }
+
+    const region = pendingLateRegion;
+    pendingLateRegion = null;
+    slides.push(() => renderMarchMadnessRegionSlide(leagueName, region));
+  };
+
+  (Array.isArray(regions) ? regions : []).forEach((region) => {
+    if (getMarchMadnessRegionStage(region) === 'early') {
+      flushPendingLateRegion();
+      slides.push(() => renderMarchMadnessRegionSlide(leagueName, region));
+      return;
+    }
+
+    if (pendingLateRegion) {
+      const pairedRegions = [pendingLateRegion, region];
+      pendingLateRegion = null;
+      slides.push(() => renderMarchMadnessLateRegionSlidePair(leagueName, pairedRegions));
+      return;
+    }
+
+    pendingLateRegion = region;
+  });
+
+  flushPendingLateRegion();
+  return slides;
+}
+
 function getMarchMadnessBracketSlides(leagueName) {
   const bracketData = getMarchMadnessBracketData(leagueName);
   if (!bracketData) {
     return getMarchMadnessScoreboardBracketSlides(leagueName);
   }
 
-  if (getMarchMadnessStage(leagueName) === 'regional') {
-    return bracketData.regions.map((region) => () => renderMarchMadnessRegionSlide(leagueName, region));
+  const compositeBracketData = getMarchMadnessCompositeBracketData(leagueName);
+  if (!compositeBracketData) {
+    return getMarchMadnessScoreboardBracketSlides(leagueName);
   }
 
-  return [() => renderMarchMadnessFinalBracketSlide(leagueName)];
+  if (getMarchMadnessStage(leagueName) === 'regional') {
+    return getMarchMadnessRegionalSlideRenderers(leagueName, compositeBracketData.regions);
+  }
+
+  return [() => renderMarchMadnessFinalBracketSlideFromData(leagueName, compositeBracketData)];
 }
 
 function formatBracketGameStatus(game) {
@@ -1538,11 +2544,255 @@ function buildMarchMadnessRegionColumns(region) {
   };
 }
 
+function getMarchMadnessSiteLabel(game) {
+  const directLocation = String(game?.location || game?.event?.location || '').trim();
+  if (directLocation) {
+    const cityLabel = directLocation.split(',')[0].trim();
+    if (cityLabel) {
+      return cityLabel;
+    }
+  }
+
+  const sourceText = [
+    getCompetitionNoteText(game?.competition),
+    game?.competition?.format?.summary,
+    game?.event?.name,
+    game?.event?.shortName
+  ].filter(Boolean).join(' - ');
+
+  const numberedRegionalMatch = sourceText.match(/\bregional\s+\d+\s+in\s+([A-Za-z .'\-]+?)(?:\s*-\s*|$)/i);
+  if (numberedRegionalMatch) {
+    return numberedRegionalMatch[1].trim();
+  }
+
+  const womenSiteMatch = sourceText.match(/\b(albany|birmingham|portland|spokane)\s+([12])\b/i);
+  if (womenSiteMatch) {
+    return `${toTitleCase(womenSiteMatch[1])} ${womenSiteMatch[2]}`;
+  }
+
+  const classicRegionMatch = sourceText.match(/\b(east|west|south|midwest|mid\-west)\s+region\b/i);
+  if (classicRegionMatch) {
+    return `${toTitleCase(classicRegionMatch[1].replace(/mid\-west/i, 'Midwest'))} Region`;
+  }
+
+  return '';
+}
+
+function renderMarchMadnessPathCard(game, { roundLabel, siteLabel = '', emptyText = '' } = {}) {
+  const safeRoundLabel = roundLabel || 'Next Round';
+
+  return `
+    <div class="sports-mm-path-card${game ? '' : ' sports-mm-path-card--placeholder'}">
+      <div class="sports-mm-path-card-header">
+        <div class="sports-mm-path-round">${safeRoundLabel}</div>
+        ${siteLabel ? `<div class="sports-mm-path-site">${siteLabel}</div>` : ''}
+      </div>
+      ${game
+        ? renderMarchMadnessGameCard(game)
+        : `
+          <div class="sports-mm-path-placeholder">
+            <div class="sports-mm-path-placeholder-text">${emptyText || 'Bracket slot to be determined'}</div>
+          </div>
+        `}
+    </div>
+  `;
+}
+
+function renderMarchMadnessNextRoundTarget(roundLabel, detailText) {
+  return `
+    <div class="sports-mm-next-round">
+      <div class="sports-mm-next-round-label">Advances To</div>
+      <div class="sports-mm-next-round-title">${roundLabel}</div>
+      <div class="sports-mm-next-round-copy">${detailText}</div>
+    </div>
+  `;
+}
+
+function renderMarchMadnessWinnerSlot(team) {
+  const hasTeam = Boolean(team?.team);
+
+  return `
+    <div class="sports-mm-winner-slot${hasTeam ? '' : ' sports-mm-winner-slot--empty'}">
+      <div class="sports-mm-winner-slot-seed">${team?.seed || ''}</div>
+      <div class="sports-mm-winner-slot-name">${team?.team || 'TBD'}</div>
+    </div>
+  `;
+}
+
+function getMarchMadnessGameWinner(game) {
+  const awayScore = Number(game?.away?.score);
+  const homeScore = Number(game?.home?.score);
+
+  if (!game?.isFinal || !Number.isFinite(awayScore) || !Number.isFinite(homeScore) || awayScore === homeScore) {
+    return null;
+  }
+
+  return awayScore > homeScore ? { ...game.away } : { ...game.home };
+}
+
+function getMarchMadnessRegionRepresentative(region, fallbackLabel = 'Bracket Winner') {
+  const elite8Game = orderMarchMadnessSecondRoundGames(region?.elite8 || [])[0] || null;
+  const winner = getMarchMadnessGameWinner(elite8Game);
+  if (winner?.team) {
+    return winner;
+  }
+
+  const regionName = String(region?.name || '').trim();
+  return {
+    seed: '',
+    team: regionName ? `${regionName} Winner` : fallbackLabel,
+    score: ''
+  };
+}
+
+function buildProjectedMarchMadnessFinalFourGame(region, pairedRegion) {
+  return {
+    isFinal: false,
+    statusText: 'National Semifinal',
+    away: getMarchMadnessRegionRepresentative(region, 'This Region Winner'),
+    home: getMarchMadnessRegionRepresentative(pairedRegion, 'Opposite Region Winner')
+  };
+}
+
+function getMarchMadnessRegionFinalFourContext(leagueName, region) {
+  const bracketData = getMarchMadnessCompositeBracketData(leagueName) || getMarchMadnessScoreboardBracketData(leagueName);
+  const regions = Array.isArray(bracketData?.regions) ? bracketData.regions : [];
+  const regionIndex = regions.findIndex((candidate) => (
+    normalizeMarchMadnessRegionName(candidate?.name) === normalizeMarchMadnessRegionName(region?.name)
+  ));
+  const pairedRegionIndex = regionIndex >= 0
+    ? (regionIndex % 2 === 0 ? regionIndex + 1 : regionIndex - 1)
+    : -1;
+  const pairedRegion = pairedRegionIndex >= 0 && pairedRegionIndex < regions.length
+    ? regions[pairedRegionIndex]
+    : null;
+  const semifinalIndex = regionIndex >= 0 ? Math.floor(regionIndex / 2) : -1;
+  const semifinalGame = semifinalIndex >= 0
+    ? (Array.isArray(bracketData?.finalFour) ? bracketData.finalFour[semifinalIndex] || null : null)
+    : null;
+
+  return {
+    game: semifinalGame,
+    pairedRegion,
+    displayGame: semifinalGame || buildProjectedMarchMadnessFinalFourGame(region, pairedRegion)
+  };
+}
+
+function buildMarchMadnessLateRegionBoardMarkup(leagueName, region, columns, regionStage, { compact = false } = {}) {
+  const leagueData = getLeagueSlideData(leagueName);
+  const branding = getMarchMadnessBranding(leagueName, { name: regionStage === 'elite8' ? 'Elite 8' : 'Sweet 16' });
+  const elite8Game = columns.elite8[0] || null;
+  const elite8Card = renderMarchMadnessPathCard(elite8Game, {
+    roundLabel: 'Elite 8',
+    siteLabel: getMarchMadnessSiteLabel(elite8Game),
+    emptyText: 'Sweet 16 winners meet here'
+  });
+  const sweet16Feeders = [columns.leftSweet16[0] || null, columns.rightSweet16[0] || null];
+  const hasSweet16Results = sweet16Feeders.some(Boolean);
+  const feederCards = hasSweet16Results
+    ? sweet16Feeders.map((game, index) => (
+      game
+        ? renderMarchMadnessPathCard(game, {
+          roundLabel: 'Sweet 16',
+          siteLabel: getMarchMadnessSiteLabel(game),
+          emptyText: 'Regional semifinal to be determined'
+        })
+        : renderMarchMadnessWinnerSlot(elite8Game ? (index === 0 ? elite8Game.away : elite8Game.home) : null)
+    ))
+    : elite8Game
+      ? [
+        renderMarchMadnessWinnerSlot(elite8Game.away),
+        renderMarchMadnessWinnerSlot(elite8Game.home)
+      ]
+      : [
+        renderMarchMadnessWinnerSlot(null),
+        renderMarchMadnessWinnerSlot(null)
+      ];
+  const semifinalContext = getMarchMadnessRegionFinalFourContext(leagueName, region);
+  const finalFourCard = renderMarchMadnessPathCard(semifinalContext.displayGame, {
+    roundLabel: 'Final Four',
+    siteLabel: getMarchMadnessSiteLabel(semifinalContext.game),
+    emptyText: 'Regional winners meet here'
+  });
+  const feederHeading = hasSweet16Results ? 'Sweet 16 Results' : 'Sweet 16 Winners';
+  const boardClass = compact ? 'sports-mm-region-board sports-mm-region-board--compact' : 'sports-mm-region-board';
+
+  return `
+    <div class="${boardClass}">
+      <div class="sports-mm-board-header">
+        <div class="sports-knockout-header-main">
+          <img class="sports-league-standings-logo" src="${leagueData?.logo || ''}" alt="${leagueName}" onerror="this.style.display='none'">
+          <div>
+            <div class="sports-feature-kicker">${branding.kicker}</div>
+            <div class="sports-knockout-subtitle">${branding.subtitle}</div>
+          </div>
+        </div>
+        <div class="sports-mm-region-pill">${String(region?.name || '').toUpperCase()}</div>
+      </div>
+      <div class="sports-mm-elite8-bracket">
+        <div class="sports-mm-elite8-heading">${feederHeading}</div>
+        <div class="sports-mm-elite8-feeders">
+          ${feederCards.join('')}
+        </div>
+        <div class="sports-mm-bracket-link sports-mm-bracket-link--inbound" aria-hidden="true">
+          <div class="sports-mm-bracket-link-join"></div>
+        </div>
+        <div class="sports-mm-path-center sports-mm-path-center--elite8-bracket">
+          ${elite8Card}
+        </div>
+        <div class="sports-mm-bracket-link sports-mm-bracket-link--outbound" aria-hidden="true">
+          <div class="sports-mm-bracket-link-join"></div>
+        </div>
+        <div class="sports-mm-path-center sports-mm-path-center--final-four">
+          ${finalFourCard}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderMarchMadnessLateRegionSlide(leagueName, region, columns, regionStage) {
+  $('.sports-games-list').html(buildMarchMadnessLateRegionBoardMarkup(leagueName, region, columns, regionStage));
+}
+
+function renderMarchMadnessLateRegionSlidePair(leagueName, regions) {
+  const safeRegions = (Array.isArray(regions) ? regions : []).filter(Boolean);
+  if (!safeRegions.length) {
+    renderFavoriteLeagueKnockoutSlide(leagueName);
+    return;
+  }
+
+  $('.sports-games-list').html(`
+    <div class="sports-mm-region-stack">
+      ${safeRegions.map((region) => buildMarchMadnessLateRegionBoardMarkup(
+        leagueName,
+        region,
+        buildMarchMadnessRegionColumns(region),
+        getMarchMadnessRegionStage(region),
+        { compact: true }
+      )).join('')}
+    </div>
+  `);
+}
+
 function renderMarchMadnessRegionSlide(leagueName, region) {
   const leagueData = getLeagueSlideData(leagueName);
   const branding = getMarchMadnessBranding(leagueName, { name: '1st & 2nd Rounds' });
   const columns = buildMarchMadnessRegionColumns(region);
+  const roundCounts = getMarchMadnessRegionRoundCounts(region);
+  const totalGames = roundCounts.firstRound + roundCounts.secondRound + roundCounts.sweet16 + roundCounts.elite8;
+  const regionStage = getMarchMadnessRegionStage(region);
   const showSweet16 = columns.leftSweet16.length || columns.rightSweet16.length || columns.elite8.length;
+
+  if (!leagueData || totalGames === 0) {
+    renderFavoriteLeagueKnockoutSlide(leagueName);
+    return;
+  }
+
+  if (regionStage !== 'early') {
+    renderMarchMadnessLateRegionSlide(leagueName, region, columns, regionStage);
+    return;
+  }
 
   $('.sports-games-list').html(`
     <div class="sports-mm-region-board">
@@ -1663,7 +2913,7 @@ function renderMarchMadnessFinalBracketSlideFromData(leagueName, bracketData) {
 }
 
 function renderMarchMadnessFinalBracketSlide(leagueName) {
-  renderMarchMadnessFinalBracketSlideFromData(leagueName, getMarchMadnessBracketData(leagueName));
+  renderMarchMadnessFinalBracketSlideFromData(leagueName, getMarchMadnessCompositeBracketData(leagueName));
 }
 
 function getMarchMadnessRoundLabelFromGames(games, fallbackLabel) {
@@ -1742,7 +2992,7 @@ function getMarchMadnessRegionLabel(event, competition) {
 
   const regionMatch = sourceText.match(/\b(east|west|south|midwest|mid\-west)\s+region\b/i);
   if (regionMatch) {
-    return `${regionMatch[1].replace(/mid\-west/i, 'Midwest')} Region`;
+    return `${toTitleCase(regionMatch[1].replace(/mid\-west/i, 'Midwest'))} Region`;
   }
 
   const womenRegionMatch = sourceText.match(/\b(albany|birmingham|portland|spokane)\s+([12])\b/i);
@@ -1750,9 +3000,14 @@ function getMarchMadnessRegionLabel(event, competition) {
     return `${toTitleCase(womenRegionMatch[1])} ${womenRegionMatch[2]}`;
   }
 
+  const numberedRegionalMatch = sourceText.match(/\bregional\s+(\d+)\b/i);
+  if (numberedRegionalMatch) {
+    return `Regional ${numberedRegionalMatch[1]}`;
+  }
+
   const regionOnlyMatch = sourceText.match(/\b(east|west|south|midwest|mid\-west)\b/i);
   if (regionOnlyMatch && /region/i.test(sourceText)) {
-    return `${regionOnlyMatch[1].replace(/mid\-west/i, 'Midwest')} Region`;
+    return `${toTitleCase(regionOnlyMatch[1].replace(/mid\-west/i, 'Midwest'))} Region`;
   }
 
   return '';
@@ -1869,7 +3124,7 @@ function getMarchMadnessScoreboardBracketSlides(leagueName) {
   ));
 
   if (hasRegionalRounds) {
-    return bracketData.regions.map((region) => () => renderMarchMadnessRegionSlide(leagueName, region));
+    return getMarchMadnessRegionalSlideRenderers(leagueName, bracketData.regions);
   }
 
   return [() => renderMarchMadnessFinalBracketSlideFromData(leagueName, bracketData)];
@@ -2000,20 +3255,30 @@ function findPair(leagues, packed, startIdx) {
 /**
  * Get games for a specific league (live + upcoming only)
  */
-function getGamesForLeague(leagueName, maxGames = 16) {
-  if (!sportsRawData || sportsRawData.length === 0) return [];
+function getGamesForLeagueFromData(sourceData, leagueName, maxGames = 16, eventPredicate = null) {
+  if (!Array.isArray(sourceData) || sourceData.length === 0) return [];
 
-  const league = sportsRawData.find(l => l.league === leagueName);
-  if (!league || !league.events) return [];
+  const league = sourceData.find((leagueData) => leagueData.league === leagueName);
+  if (!league || !Array.isArray(league.events)) return [];
 
   const games = [];
   for (const event of league.events) {
     if (games.length >= maxGames) break;
-    const status = event.status?.type?.state || '';
-    if (status !== 'in' && status !== 'pre' && status !== 'post') continue;
+
+    if (typeof eventPredicate === 'function') {
+      if (!eventPredicate(event)) continue;
+    } else {
+      const status = event.status?.type?.state || '';
+      if (status !== 'in' && status !== 'pre' && status !== 'post') continue;
+    }
+
     games.push({ league: league.league, logo: league.logo, event });
   }
   return games;
+}
+
+function getGamesForLeague(leagueName, maxGames = 16) {
+  return getGamesForLeagueFromData(sportsRawData, leagueName, maxGames);
 }
 
 /**
@@ -2032,7 +3297,21 @@ function renderSingleLeagueSlide(league) {
   $('.sports-games-list').html(html);
 }
 
-function getFeaturedTeamCardData(followedTeam, gameData) {
+function getFollowedTeamKickerText(followedTeam, featuredShortName, selectionContext = null) {
+  const baseLabel = followedTeam.label || `TODAY'S ${featuredShortName.toUpperCase()} GAME`;
+
+  if (selectionContext?.window === 'previous') {
+    if (/^TODAY'S\b/i.test(baseLabel)) {
+      return baseLabel.replace(/^TODAY'S\b/i, "YESTERDAY'S");
+    }
+
+    return `YESTERDAY: ${baseLabel}`;
+  }
+
+  return baseLabel;
+}
+
+function getFeaturedTeamCardData(followedTeam, gameData, selectionContext = null) {
   const event = gameData.event;
   const competition = event?.competitions?.[0];
   const competitors = competition?.competitors || [];
@@ -2061,7 +3340,15 @@ function getFeaturedTeamCardData(followedTeam, gameData) {
     : status === 'post'
       ? (shortDetail || 'FINAL')
       : (shortDetail || 'Upcoming');
-  const kickerText = followedTeam.label || `TODAY'S ${featuredShortName.toUpperCase()} GAME`;
+  const kickerText = getFollowedTeamKickerText(followedTeam, featuredShortName, selectionContext);
+  const leftCompetitor = followedTeam.league === 'MLB'
+    ? competitors.find((competitor) => competitor?.homeAway === 'away') || featuredTeam
+    : featuredTeam;
+  const rightCompetitor = followedTeam.league === 'MLB'
+    ? competitors.find((competitor) => competitor?.homeAway === 'home') || opponent
+    : opponent;
+  const leftTeam = leftCompetitor?.team || {};
+  const rightTeam = rightCompetitor?.team || {};
 
   return {
     kickerText,
@@ -2081,14 +3368,22 @@ function getFeaturedTeamCardData(followedTeam, gameData) {
     venue,
     broadcast,
     detailLine1: cupTieMeta?.primary || venue,
-    detailLine2: cupTieMeta?.secondary || broadcast
+    detailLine2: cupTieMeta?.secondary || broadcast,
+    leftDisplayName: leftTeam.displayName || leftTeam.shortDisplayName || leftTeam.abbreviation || 'Team',
+    leftLogo: leftTeam.logo || '',
+    leftRecord: leftCompetitor?.records?.[0]?.summary || '',
+    leftScore: status === 'in' || status === 'post' ? (leftCompetitor?.score || '0') : '',
+    rightDisplayName: rightTeam.displayName || rightTeam.shortDisplayName || rightTeam.abbreviation || 'Team',
+    rightLogo: rightTeam.logo || '',
+    rightRecord: rightCompetitor?.records?.[0]?.summary || '',
+    rightScore: status === 'in' || status === 'post' ? (rightCompetitor?.score || '0') : ''
   };
 }
 
 function renderFeaturedTeamsSlide(featuredItems) {
   const cards = featuredItems
-    .map(({ followedTeam, gameData }) => {
-      const card = getFeaturedTeamCardData(followedTeam, gameData);
+    .map(({ followedTeam, gameData, selectionContext }) => {
+      const card = getFeaturedTeamCardData(followedTeam, gameData, selectionContext);
       if (!card) {
         return null;
       }
@@ -2113,23 +3408,23 @@ function renderFeaturedTeamsSlide(featuredItems) {
           <div class="sports-feature-matchup">${card.matchupLabel}</div>
           <div class="sports-feature-teams">
             <div class="sports-feature-team">
-              <img class="sports-feature-logo" src="${card.featuredLogo}" alt="${card.featuredDisplayName}" onerror="this.style.display='none'">
-              <div class="sports-feature-team-name">${card.featuredDisplayName}</div>
-              <div class="sports-feature-team-meta">${card.featuredRecord}</div>
-              <div class="sports-feature-score">${card.featuredScore}</div>
+              <img class="sports-feature-logo" src="${card.leftLogo || card.featuredLogo}" alt="${card.leftDisplayName || card.featuredDisplayName}" onerror="this.style.display='none'">
+              <div class="sports-feature-team-name">${card.leftDisplayName || card.featuredDisplayName}</div>
+              <div class="sports-feature-team-meta">${card.leftRecord || card.featuredRecord}</div>
+              <div class="sports-feature-score">${card.leftScore || card.featuredScore}</div>
             </div>
             <div class="sports-feature-versus">${card.versusText}</div>
             <div class="sports-feature-team">
-              <img class="sports-feature-logo" src="${card.opponentLogo}" alt="${card.opponentDisplayName}" onerror="this.style.display='none'">
-              <div class="sports-feature-team-name">${card.opponentDisplayName}</div>
-              <div class="sports-feature-team-meta">${card.opponentRecord}</div>
-              <div class="sports-feature-score">${card.opponentScore}</div>
+              <img class="sports-feature-logo" src="${card.rightLogo || card.opponentLogo}" alt="${card.rightDisplayName || card.opponentDisplayName}" onerror="this.style.display='none'">
+              <div class="sports-feature-team-name">${card.rightDisplayName || card.opponentDisplayName}</div>
+              <div class="sports-feature-team-meta">${card.rightRecord || card.opponentRecord}</div>
+              <div class="sports-feature-score">${card.rightScore || card.opponentScore}</div>
             </div>
           </div>
           <div class="sports-feature-status">${card.statusText}</div>
           ${card.postGameStats ? `
             <div class="sports-postgame-stats sports-postgame-stats--feature">
-              ${card.postGameStats.stats.map((stat) => `
+              ${card.postGameStats.stats.slice(0, 5).map((stat) => `
                 <div class="sports-postgame-stat-row sports-postgame-stat-row--feature">
                   <div class="sports-postgame-stat-value sports-postgame-stat-value--feature">${stat.featuredValue}</div>
                   <div class="sports-postgame-stat-name sports-postgame-stat-name--feature">${stat.label}</div>
@@ -2156,15 +3451,15 @@ function renderFollowedTeamStandingsSlide(item) {
     return;
   }
 
-  const card = getFeaturedTeamCardData(item.followedTeam, item.gameData);
+  const card = getFeaturedTeamCardData(item.followedTeam, item.gameData, item.selectionContext);
+  const useDetailedNhlStandings = isNhlDivisionStandingsGroup(groupData, item.followedTeam.league);
   const rows = getStandingsRows(groupData, item.followedTeam.league);
-
-  $('.sports-games-list').html(`
-    <div class="sports-team-focus sports-team-focus--standings${card?.theme ? ` sports-feature-slide--${card.theme}` : ''}">
-      <div class="sports-team-focus-header">
-        <div class="sports-feature-kicker">${card?.kickerText || 'TODAY\'S GAME'}</div>
-        <div class="sports-team-focus-subtitle">${groupData.name.toUpperCase()} STANDINGS</div>
-      </div>
+  const slideTitle = useDetailedNhlStandings
+    ? groupData.name
+    : `${groupData.name.toUpperCase()} STANDINGS`;
+  const standingsMarkup = useDetailedNhlStandings
+    ? renderDetailedNhlStandingsTableMarkup(groupData, item.followedTeam.league)
+    : `
       <div class="sports-team-focus-summary">
         <img class="sports-team-focus-logo" src="${card?.featuredLogo || ''}" alt="${card?.featuredDisplayName || item.followedTeam.name}" onerror="this.style.display='none'">
         <div>
@@ -2177,12 +3472,21 @@ function renderFollowedTeamStandingsSlide(item) {
           ${renderStandingsRowMarkup(row)}
         `).join('')}
       </div>
+    `;
+
+  $('.sports-games-list').html(`
+    <div class="sports-team-focus sports-team-focus--standings${useDetailedNhlStandings ? ' sports-team-focus--nhl-division-standings' : ''}${card?.theme ? ` sports-feature-slide--${card.theme}` : ''}">
+      <div class="sports-team-focus-header">
+        ${useDetailedNhlStandings ? '' : `<div class="sports-feature-kicker">${card?.kickerText || 'TODAY\'S GAME'}</div>`}
+        <div class="sports-team-focus-subtitle">${slideTitle}</div>
+      </div>
+      ${standingsMarkup}
     </div>
   `);
 }
 
 function renderFollowedTeamSpotlightSlide(item) {
-  const card = getFeaturedTeamCardData(item.followedTeam, item.gameData);
+  const card = getFeaturedTeamCardData(item.followedTeam, item.gameData, item.selectionContext);
   const headlines = getFollowedTeamHeadlineItems(item.followedTeam);
 
   if (!card) {
@@ -2198,10 +3502,10 @@ function renderFollowedTeamSpotlightSlide(item) {
       </div>
       <div class="sports-team-focus-scoreboard">
         <div class="sports-team-focus-club">
-          <img class="sports-team-focus-logo" src="${card.featuredLogo}" alt="${card.featuredDisplayName}" onerror="this.style.display='none'">
-          <div class="sports-team-focus-name">${card.featuredDisplayName}</div>
-          <div class="sports-team-focus-meta">${card.featuredRecord}</div>
-          <div class="sports-team-focus-score">${card.featuredScore || '&nbsp;'}</div>
+          <img class="sports-team-focus-logo" src="${card.leftLogo || card.featuredLogo}" alt="${card.leftDisplayName || card.featuredDisplayName}" onerror="this.style.display='none'">
+          <div class="sports-team-focus-name">${card.leftDisplayName || card.featuredDisplayName}</div>
+          <div class="sports-team-focus-meta">${card.leftRecord || card.featuredRecord}</div>
+          <div class="sports-team-focus-score">${card.leftScore || card.featuredScore || '&nbsp;'}</div>
         </div>
         <div class="sports-team-focus-center">
           <div class="sports-team-focus-status">${card.statusText}</div>
@@ -2210,10 +3514,10 @@ function renderFollowedTeamSpotlightSlide(item) {
           <div class="sports-team-focus-detail">${card.detailLine2 || '&nbsp;'}</div>
         </div>
         <div class="sports-team-focus-club">
-          <img class="sports-team-focus-logo" src="${card.opponentLogo}" alt="${card.opponentDisplayName}" onerror="this.style.display='none'">
-          <div class="sports-team-focus-name">${card.opponentDisplayName}</div>
-          <div class="sports-team-focus-meta">${card.opponentRecord}</div>
-          <div class="sports-team-focus-score">${card.opponentScore || '&nbsp;'}</div>
+          <img class="sports-team-focus-logo" src="${card.rightLogo || card.opponentLogo}" alt="${card.rightDisplayName || card.opponentDisplayName}" onerror="this.style.display='none'">
+          <div class="sports-team-focus-name">${card.rightDisplayName || card.opponentDisplayName}</div>
+          <div class="sports-team-focus-meta">${card.rightRecord || card.opponentRecord}</div>
+          <div class="sports-team-focus-score">${card.rightScore || card.opponentScore || '&nbsp;'}</div>
         </div>
       </div>
       <div class="sports-team-news">
@@ -2230,13 +3534,17 @@ function renderFollowedTeamSpotlightSlide(item) {
 }
 
 function renderFollowedTeamCombinedSlide(item) {
-  const card = getFeaturedTeamCardData(item.followedTeam, item.gameData);
+  const card = getFeaturedTeamCardData(item.followedTeam, item.gameData, item.selectionContext);
   const headlines = getFollowedTeamHeadlineItems(item.followedTeam);
   const standingsData = standingsCache[item.followedTeam.league];
   const groupData = findStandingsGroupForTeam(standingsData, item.followedTeam);
-  const rows = groupData ? getStandingsRows(groupData, item.followedTeam.league).slice(0, 4) : [];
+  const rows = groupData ? getFullStandingsRows(groupData, item.followedTeam.league) : [];
   const lineScore = getLineScoreData(item.gameData);
+  const liveBaseballStateMarkup = renderFeaturedLiveBaseballStateMarkup(item.gameData, lineScore);
   const postGameStats = getPostGameStatsData(item.gameData, item.followedTeam);
+  const postGameStatRows = postGameStats?.stats || [];
+  const postGameSupplementalItems = getPostGameStatsSupplementalItems(item.gameData);
+  const isMlbFullDivisionStandings = item.followedTeam.league === 'MLB' && groupData && rows.length >= 5;
 
   if (!card) {
     $('.sports-games-list').html('');
@@ -2244,17 +3552,16 @@ function renderFollowedTeamCombinedSlide(item) {
   }
 
   $('.sports-games-list').html(`
-    <div class="sports-team-focus${card.theme ? ` sports-feature-slide--${card.theme}` : ''}">
+    <div class="sports-team-focus sports-team-focus--no-kicker${card.theme ? ` sports-feature-slide--${card.theme}` : ''}${isMlbFullDivisionStandings ? ' sports-team-focus--mlb-full-division' : ''}">
       <div class="sports-team-focus-header">
-        <div class="sports-feature-kicker">${card.kickerText}</div>
         <div class="sports-team-focus-subtitle">${card.matchupLabel}</div>
       </div>
       <div class="sports-team-focus-scoreboard sports-team-focus-scoreboard--compact">
         <div class="sports-team-focus-club">
-          <img class="sports-team-focus-logo" src="${card.featuredLogo}" alt="${card.featuredDisplayName}" onerror="this.style.display='none'">
-          <div class="sports-team-focus-name">${card.featuredDisplayName}</div>
-          <div class="sports-team-focus-meta">${card.featuredRecord}</div>
-          <div class="sports-team-focus-score">${card.featuredScore || '&nbsp;'}</div>
+          <img class="sports-team-focus-logo" src="${card.leftLogo || card.featuredLogo}" alt="${card.leftDisplayName || card.featuredDisplayName}" onerror="this.style.display='none'">
+          <div class="sports-team-focus-name">${card.leftDisplayName || card.featuredDisplayName}</div>
+          <div class="sports-team-focus-meta">${card.leftRecord || card.featuredRecord}</div>
+          <div class="sports-team-focus-score">${card.leftScore || card.featuredScore || '&nbsp;'}</div>
         </div>
         <div class="sports-team-focus-center">
           <div class="sports-team-focus-status">${card.statusText}</div>
@@ -2263,58 +3570,61 @@ function renderFollowedTeamCombinedSlide(item) {
           <div class="sports-team-focus-detail">${card.detailLine2 || '&nbsp;'}</div>
         </div>
         <div class="sports-team-focus-club">
-          <img class="sports-team-focus-logo" src="${card.opponentLogo}" alt="${card.opponentDisplayName}" onerror="this.style.display='none'">
-          <div class="sports-team-focus-name">${card.opponentDisplayName}</div>
-          <div class="sports-team-focus-meta">${card.opponentRecord}</div>
-          <div class="sports-team-focus-score">${card.opponentScore || '&nbsp;'}</div>
+          <img class="sports-team-focus-logo" src="${card.rightLogo || card.opponentLogo}" alt="${card.rightDisplayName || card.opponentDisplayName}" onerror="this.style.display='none'">
+          <div class="sports-team-focus-name">${card.rightDisplayName || card.opponentDisplayName}</div>
+          <div class="sports-team-focus-meta">${card.rightRecord || card.opponentRecord}</div>
+          <div class="sports-team-focus-score">${card.rightScore || card.opponentScore || '&nbsp;'}</div>
         </div>
       </div>
-      ${lineScore ? `
+      ${liveBaseballStateMarkup ? `
+        ${liveBaseballStateMarkup}
+      ` : lineScore ? `
         <div class="sports-team-linescore">
           <div class="sports-team-news-title">LIVE LINE SCORE</div>
-          <div class="sports-linescore-grid" style="grid-template-columns: minmax(0, 1.4fr) repeat(${lineScore.periods.length}, minmax(34px, 1fr)) minmax(42px, 0.8fr);">
-            <div class="sports-linescore-cell sports-linescore-cell--head sports-linescore-cell--team">TEAM</div>
-            ${lineScore.periods.map((period) => `<div class="sports-linescore-cell sports-linescore-cell--head">${period.label}</div>`).join('')}
-            <div class="sports-linescore-cell sports-linescore-cell--head">T</div>
-
-            <div class="sports-linescore-cell sports-linescore-cell--teamrow">
-              <img class="sports-linescore-logo" src="${lineScore.awayTeam.logo}" alt="${lineScore.awayTeam.name}" onerror="this.style.display='none'">
-              <span class="sports-linescore-team">${lineScore.awayTeam.name}</span>
-            </div>
-            ${lineScore.periods.map((period) => `<div class="sports-linescore-cell">${period.away}</div>`).join('')}
-            <div class="sports-linescore-cell sports-linescore-cell--total">${lineScore.awayTeam.total}</div>
-
-            <div class="sports-linescore-cell sports-linescore-cell--teamrow">
-              <img class="sports-linescore-logo" src="${lineScore.homeTeam.logo}" alt="${lineScore.homeTeam.name}" onerror="this.style.display='none'">
-              <span class="sports-linescore-team">${lineScore.homeTeam.name}</span>
-            </div>
-            ${lineScore.periods.map((period) => `<div class="sports-linescore-cell">${period.home}</div>`).join('')}
-            <div class="sports-linescore-cell sports-linescore-cell--total">${lineScore.homeTeam.total}</div>
-          </div>
+          ${renderLineScoreGridMarkup(lineScore)}
         </div>
       ` : postGameStats ? `
         <div class="sports-team-focus-lower">
           <div class="sports-team-stats-block">
             <div class="sports-team-news-title">FINAL TEAM STATS</div>
-            <div class="sports-postgame-stats">
+            <div class="sports-postgame-stats sports-postgame-stats--compare-grid">
               <div class="sports-postgame-stats-header">
                 <div class="sports-postgame-team">
                   <img class="sports-postgame-team-logo" src="${postGameStats.featuredTeam.logo}" alt="${postGameStats.featuredTeam.name}" onerror="this.style.display='none'">
                   <span>${postGameStats.featuredTeam.name}</span>
                 </div>
-                <div class="sports-postgame-stat-label">STAT</div>
+                <div class="sports-postgame-stat-label">CATEGORY</div>
                 <div class="sports-postgame-team sports-postgame-team--home">
                   <span>${postGameStats.opponentTeam.name}</span>
                   <img class="sports-postgame-team-logo" src="${postGameStats.opponentTeam.logo}" alt="${postGameStats.opponentTeam.name}" onerror="this.style.display='none'">
                 </div>
               </div>
-              ${postGameStats.stats.map((stat) => `
-                <div class="sports-postgame-stat-row">
-                  <div class="sports-postgame-stat-value">${stat.featuredValue}</div>
-                  <div class="sports-postgame-stat-name">${stat.label}</div>
-                  <div class="sports-postgame-stat-value">${stat.opponentValue}</div>
+              <div class="sports-postgame-stat-grid">
+                ${postGameStatRows.map((stat) => `
+                  <div class="sports-postgame-stat-card">
+                    <div class="sports-postgame-stat-card-side sports-postgame-stat-card-side--featured${stat.winner === 'featured' ? ' sports-postgame-stat-card-side--leader' : ''}">
+                      <div class="sports-postgame-stat-card-value">${stat.featuredValue}</div>
+                    </div>
+                    <div class="sports-postgame-stat-card-center">
+                      <div class="sports-postgame-stat-card-name">${stat.label}</div>
+                      ${stat.detailLabel ? `<div class="sports-postgame-stat-card-detail">${stat.detailLabel}</div>` : ''}
+                    </div>
+                    <div class="sports-postgame-stat-card-side sports-postgame-stat-card-side--opponent${stat.winner === 'opponent' ? ' sports-postgame-stat-card-side--leader' : ''}">
+                      <div class="sports-postgame-stat-card-value">${stat.opponentValue}</div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+              ${postGameSupplementalItems.length > 0 ? `
+                <div class="sports-postgame-extra-list">
+                  ${postGameSupplementalItems.map((item) => `
+                    <div class="sports-postgame-extra-item">
+                      <span class="sports-postgame-extra-label">${item.label}</span>
+                      <span class="sports-postgame-extra-value">${item.value}</span>
+                    </div>
+                  `).join('')}
                 </div>
-              `).join('')}
+              ` : ''}
             </div>
           </div>
           <div class="sports-team-news">
@@ -2328,7 +3638,7 @@ function renderFollowedTeamCombinedSlide(item) {
           </div>
         </div>
       ` : `
-        <div class="sports-team-focus-lower${groupData ? '' : ' sports-team-focus-lower--news-only'}">
+        <div class="sports-team-focus-lower${groupData ? '' : ' sports-team-focus-lower--news-only'}${isMlbFullDivisionStandings ? ' sports-team-focus-lower--mlb-full-division' : ''}">
           ${groupData ? `
             <div class="sports-team-standings-block">
               <div class="sports-team-news-title">${groupData.name.toUpperCase()} STANDINGS</div>
@@ -2362,6 +3672,266 @@ function renderFavoriteLeagueScoreboardSlide(league) {
   $('.sports-games-list').html(html);
 }
 
+function getMlbDivisionColumns(groups) {
+  const columns = ['WEST', 'CENTRAL', 'EAST'].map((division) => ({
+    division,
+    groups: []
+  }));
+
+  groups.forEach((group) => {
+    const divisionLabel = getMlbDivisionSlotLabel(group?.groupName || '');
+    if (divisionLabel === 'DIVISION') {
+      return;
+    }
+
+    const column = columns.find((item) => item.division === divisionLabel);
+    if (!column) {
+      return;
+    }
+
+    column.groups.push(group);
+    column.groups.sort((a, b) => {
+      const aLeague = String(a?.groupName || '').match(/\b(AL|NL)\b/i)?.[1] || 'ZZ';
+      const bLeague = String(b?.groupName || '').match(/\b(AL|NL)\b/i)?.[1] || 'ZZ';
+      return aLeague.localeCompare(bLeague);
+    });
+  });
+
+  return columns.filter((column) => column.groups.length > 0);
+}
+
+function getNumericEntryStat(entry, names) {
+  const stat = getEntryStat(entry, names);
+  const numericValue = Number(stat?.value ?? stat?.displayValue);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function getMlbLeagueLabel(leagueName) {
+  if (leagueName === 'AL') {
+    return 'AMERICAN LEAGUE';
+  }
+
+  if (leagueName === 'NL') {
+    return 'NATIONAL LEAGUE';
+  }
+
+  return String(leagueName || 'LEAGUE').toUpperCase();
+}
+
+function getMlbLeagueSortValue(leagueName) {
+  if (leagueName === 'NATIONAL LEAGUE') {
+    return 0;
+  }
+
+  if (leagueName === 'AMERICAN LEAGUE') {
+    return 1;
+  }
+
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function getMlbDivisionSlotLabel(divisionLike) {
+  const rawLabel = typeof divisionLike === 'string'
+    ? divisionLike
+    : [
+        divisionLike?.name,
+        divisionLike?.shortName,
+        divisionLike?.abbreviation,
+        divisionLike?.displayName
+      ].filter(Boolean).join(' ');
+  const normalizedLabel = String(rawLabel || '').trim();
+
+  if (/\b(?:West|ALW|NLW)\b/i.test(normalizedLabel)) {
+    return 'WEST';
+  }
+
+  if (/\b(?:Central|ALC|NLC)\b/i.test(normalizedLabel)) {
+    return 'CENTRAL';
+  }
+
+  if (/\b(?:East|ALE|NLE)\b/i.test(normalizedLabel)) {
+    return 'EAST';
+  }
+
+  return 'DIVISION';
+}
+
+function getMlbDivisionSortValue(label) {
+  const orderedDivisions = ['WEST', 'CENTRAL', 'EAST'];
+  const index = orderedDivisions.indexOf(label);
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+}
+
+function getMlbStandingsRowBase(entry) {
+  return {
+    teamName: entry.team?.shortDisplayName || entry.team?.displayName || entry.team?.abbreviation || 'Team',
+    logo: entry.team?.logos?.[0]?.href || '',
+    record: formatStandingsRecord(entry, 'MLB'),
+    isFollowed: Boolean(getFollowedTeams().some((followedTeam) => followedTeam.league === 'MLB' && isMatchingTeam(entry.team, followedTeam)))
+  };
+}
+
+function formatMlbGamesBackMetric(value) {
+  const displayValue = String(value ?? '').trim();
+  if (!displayValue || displayValue === '-' || displayValue === '0' || displayValue === '0.0') {
+    return '-';
+  }
+
+  return `${displayValue} GB`;
+}
+
+function formatMlbWildCardGapMetric(entry, cutoffEntry) {
+  if (!entry || !cutoffEntry) {
+    return '';
+  }
+
+  const wins = getNumericEntryStat(entry, ['wins', 'W']);
+  const losses = getNumericEntryStat(entry, ['losses', 'L']);
+  const cutoffWins = getNumericEntryStat(cutoffEntry, ['wins', 'W']);
+  const cutoffLosses = getNumericEntryStat(cutoffEntry, ['losses', 'L']);
+
+  if (![wins, losses, cutoffWins, cutoffLosses].every(Number.isFinite)) {
+    return '';
+  }
+
+  const gamesBack = ((cutoffWins - wins) + (losses - cutoffLosses)) / 2;
+  if (Math.abs(gamesBack) < 0.05) {
+    return '-';
+  }
+
+  const absoluteGamesBack = Math.abs(gamesBack);
+  const formattedGap = Number.isInteger(absoluteGamesBack)
+    ? String(absoluteGamesBack)
+    : absoluteGamesBack.toFixed(1).replace(/\.0$/, '');
+
+  return gamesBack < 0 ? `+${formattedGap}` : `${formattedGap} GB`;
+}
+
+function getMlbDivisionStandingsRows(entries) {
+  return entries.map((entry, index) => ({
+    ...getMlbStandingsRowBase(entry),
+    rank: String(index + 1),
+    metric: formatMlbGamesBackMetric(getEntryStat(entry, ['divisionGamesBehind', 'gamesBehind', 'DGB', 'GB'])?.displayValue)
+  }));
+}
+
+function getMlbWildCardStandingsRows(entries, divisionLeaderIds) {
+  const candidates = entries
+    .filter((entry) => !divisionLeaderIds.has(String(entry?.team?.id || '')))
+    .map((entry, index) => ({
+      entry,
+      index,
+      seed: getNumericEntryStat(entry, ['playoffSeed', 'SEED', 'POS']),
+      winPct: getNumericEntryStat(entry, ['winPercent', 'winpercent', 'PCT']) ?? -1,
+      wins: getNumericEntryStat(entry, ['wins', 'W']) ?? -1,
+      losses: getNumericEntryStat(entry, ['losses', 'L']) ?? Number.MAX_SAFE_INTEGER
+    }))
+    .sort((a, b) => {
+      const seedA = Number.isFinite(a.seed) ? a.seed : Number.MAX_SAFE_INTEGER;
+      const seedB = Number.isFinite(b.seed) ? b.seed : Number.MAX_SAFE_INTEGER;
+      if (seedA !== seedB) {
+        return seedA - seedB;
+      }
+
+      if (a.winPct !== b.winPct) {
+        return b.winPct - a.winPct;
+      }
+
+      if (a.wins !== b.wins) {
+        return b.wins - a.wins;
+      }
+
+      if (a.losses !== b.losses) {
+        return a.losses - b.losses;
+      }
+
+      return a.index - b.index;
+    })
+    .slice(0, 6);
+
+  const cutoffEntry = candidates[Math.min(2, Math.max(candidates.length - 1, 0))]?.entry || null;
+
+  return candidates.map(({ entry }, index) => ({
+    ...getMlbStandingsRowBase(entry),
+    rank: String(index + 1),
+    metric: formatMlbWildCardGapMetric(entry, cutoffEntry)
+  }));
+}
+
+function getMlbPlayoffPicture() {
+  const standingsData = standingsCache.MLB;
+  const leagues = Array.isArray(standingsData?.children) ? standingsData.children : [];
+
+  return leagues.map((league) => {
+    const divisions = Array.isArray(league?.children) ? league.children : [];
+    const divisionLeaderIds = new Set();
+    const divisionStandings = divisions.map((division) => {
+      const entries = Array.isArray(division?.standings?.entries) ? division.standings.entries : [];
+      if (entries.length === 0) {
+        return null;
+      }
+
+      const leaderTeamId = String(entries[0]?.team?.id || `${league?.id || 'league'}-${division?.id || 'division'}-leader`);
+      divisionLeaderIds.add(leaderTeamId);
+
+      return {
+        title: getMlbDivisionSlotLabel(division),
+        rows: getMlbDivisionStandingsRows(entries),
+        entries
+      };
+    }).filter(Boolean);
+
+    divisionStandings.sort((a, b) => getMlbDivisionSortValue(a.title) - getMlbDivisionSortValue(b.title));
+
+    const leagueEntries = divisionStandings.flatMap((division) => division.entries || []);
+    const wildCardRows = getMlbWildCardStandingsRows(leagueEntries, divisionLeaderIds);
+
+    if (divisionStandings.length < 3 || wildCardRows.length < 3) {
+      return null;
+    }
+
+    return {
+      leagueName: getMlbLeagueLabel(league?.shortName || league?.abbreviation || league?.name),
+      divisionSections: divisionStandings.map(({ title, rows }) => ({ title, rows })),
+      wildCardSection: {
+        title: 'WILD CARD',
+        rows: wildCardRows
+      }
+    };
+  }).filter(Boolean);
+}
+
+function buildMlbPlayoffSectionMarkup(section, extraClass = '') {
+  const blockClass = ['sports-team-standings-block', extraClass].filter(Boolean).join(' ');
+
+  return `
+    <div class="${blockClass}">
+      <div class="sports-team-news-title sports-team-news-title--subtle">${section.title}</div>
+      ${buildStandingsTableMarkup(section.rows)}
+    </div>
+  `;
+}
+
+function buildMlbPlayoffDivisionLeaguePanelMarkup(league) {
+  return `
+    <div class="sports-mlb-playoff-league-panel">
+      <div class="sports-team-news-title">${league.leagueName}</div>
+      <div class="sports-mlb-playoff-division-grid">
+        ${league.divisionSections.map((section) => buildMlbPlayoffSectionMarkup(section, 'sports-mlb-playoff-division-section')).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function buildMlbPlayoffWildCardPanelMarkup(league) {
+  return `
+    <div class="sports-team-standings-block sports-mlb-playoff-wildcard-panel">
+      <div class="sports-team-news-title">${league.leagueName} WILD CARD</div>
+      ${buildStandingsTableMarkup(league.wildCardSection.rows)}
+    </div>
+  `;
+}
+
 function renderFavoriteLeagueStandingsSlide(leagueItems, groupsOverride) {
   if (!Array.isArray(leagueItems) || leagueItems.length === 0) {
     $('.sports-games-list').html('');
@@ -2376,6 +3946,61 @@ function renderFavoriteLeagueStandingsSlide(leagueItems, groupsOverride) {
 
   if (!leagueData || groups.length === 0) {
     renderFavoriteLeagueScoreboardSlide(leagueData || { name: leagueName, logo: '', games: [] });
+    return;
+  }
+
+  if (leagueName === 'MLB' && groups.length >= 6) {
+    const playoffPicture = getMlbPlayoffPicture();
+    if (playoffPicture.length >= 2) {
+      const orderedPlayoffPicture = [...playoffPicture].sort((a, b) => getMlbLeagueSortValue(a.leagueName) - getMlbLeagueSortValue(b.leagueName));
+
+      $('.sports-games-list').html(`
+        <div class="sports-league-standings sports-league-standings--mlb sports-league-standings--mlb-playoff">
+          <div class="sports-league-standings-header">
+            <img class="sports-league-standings-logo" src="${leagueData.logo || ''}" alt="${leagueName}" onerror="this.style.display='none'">
+            <div>
+              <div class="sports-feature-kicker">${leagueName} STANDINGS</div>
+              <div class="sports-league-standings-subtitle">DIVISION RACES &amp; WILD CARD</div>
+            </div>
+          </div>
+          <div class="sports-mlb-playoff-layout">
+            ${orderedPlayoffPicture.map((league) => buildMlbPlayoffDivisionLeaguePanelMarkup(league)).join('')}
+            <div class="sports-mlb-playoff-wildcard-panels">
+              ${orderedPlayoffPicture.map((league) => buildMlbPlayoffWildCardPanelMarkup(league)).join('')}
+            </div>
+          </div>
+        </div>
+      `);
+      return;
+    }
+
+    const columns = getMlbDivisionColumns(groups);
+
+    $('.sports-games-list').html(`
+      <div class="sports-league-standings sports-league-standings--mlb">
+        <div class="sports-league-standings-header">
+          <img class="sports-league-standings-logo" src="${leagueData.logo || ''}" alt="${leagueName}" onerror="this.style.display='none'">
+          <div>
+            <div class="sports-feature-kicker">${leagueName} STANDINGS</div>
+          </div>
+        </div>
+        <div class="sports-league-standings-mlb-columns">
+          ${columns.map((column) => `
+            <div class="sports-league-standings-mlb-column">
+              <div class="sports-team-news-title">${column.division.toUpperCase()}</div>
+              <div class="sports-league-standings-mlb-division-stack">
+                ${column.groups.map((group) => `
+                  <div class="sports-team-standings-block">
+                    <div class="sports-team-news-title sports-team-news-title--subtle">${group.groupName.toUpperCase()}</div>
+                    ${buildStandingsTableMarkup(group.rows)}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `);
     return;
   }
 
@@ -2655,6 +4280,65 @@ function isBaseballLeague(leagueName) {
   return ['MLB', 'College Baseball', 'WBC'].includes(leagueName);
 }
 
+function getCompetitionBroadcastText(competition) {
+  const broadcasts = Array.isArray(competition?.broadcasts) ? competition.broadcasts : [];
+  const names = [];
+
+  broadcasts.forEach((broadcast) => {
+    const broadcastNames = Array.isArray(broadcast?.names)
+      ? broadcast.names
+      : (broadcast?.name ? [broadcast.name] : []);
+
+    broadcastNames.forEach((name) => {
+      const trimmed = String(name || '').trim();
+      if (trimmed && !names.includes(trimmed)) {
+        names.push(trimmed);
+      }
+    });
+  });
+
+  return names.slice(0, 2).join(' / ');
+}
+
+function getMlbTvUrl(gameData) {
+  if (gameData?.league !== 'MLB') {
+    return '';
+  }
+
+  const event = gameData?.event;
+  const gamePk = event?.mlbGamePk || event?.baseballFinalDetails?.gamePk;
+  if (event?.mlbTvUrl) {
+    return event.mlbTvUrl;
+  }
+
+  return gamePk ? `https://www.mlb.com/tv/g${gamePk}` : '';
+}
+
+function wrapGameCardMarkup(gameData, cardMarkup) {
+  if (!cardMarkup) {
+    return '';
+  }
+
+  const mlbTvUrl = getMlbTvUrl(gameData);
+  if (!mlbTvUrl) {
+    return cardMarkup;
+  }
+
+  const matchupLabel = gameData?.event?.shortName || gameData?.event?.name || 'MLB game';
+  return `
+    <a
+      class="sports-game-link"
+      href="${mlbTvUrl}"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Open MLB.TV feed for ${matchupLabel}"
+      title="Open MLB.TV"
+    >
+      ${cardMarkup}
+    </a>
+  `;
+}
+
 function formatCompactAthleteName(name, fallback = '--') {
   const trimmed = String(name || '').trim();
   if (!trimmed) {
@@ -2667,6 +4351,155 @@ function formatCompactAthleteName(name, fallback = '--') {
   }
 
   return `${parts[0].charAt(0)}. ${parts[parts.length - 1]}`;
+}
+
+function getTrustedBaseballFinalHomeRuns(gameData) {
+  const homeRuns = gameData?.event?.baseballFinalDetails?.homeRuns;
+  // ESPN competitor leaders can reflect season leaders, not the homers from this final.
+  return Array.isArray(homeRuns) ? homeRuns : [];
+}
+
+function getTrustedBaseballFinalRbis(gameData) {
+  const rbis = gameData?.event?.baseballFinalDetails?.rbis;
+  return Array.isArray(rbis) ? rbis : [];
+}
+
+function getBaseballFinalTeamOrder(gameData) {
+  const competitors = Array.isArray(gameData?.event?.competitions?.[0]?.competitors)
+    ? gameData.event.competitions[0].competitors
+    : [];
+
+  return competitors
+    .slice()
+    .sort((a, b) => {
+      const order = { away: 0, home: 1 };
+      return (order[String(a?.homeAway || '').toLowerCase()] ?? 2) - (order[String(b?.homeAway || '').toLowerCase()] ?? 2);
+    })
+    .map((competitor) => String(competitor?.team?.abbreviation || competitor?.team?.shortDisplayName || '').trim())
+    .filter(Boolean);
+}
+
+function groupBaseballFinalHittersByTeam(entries = []) {
+  return (Array.isArray(entries) ? entries : [])
+    .filter((entry) => entry?.name)
+    .reduce((map, entry) => {
+      const teamKey = String(entry?.teamAbbreviation || '').trim();
+      if (!map[teamKey]) {
+        map[teamKey] = [];
+      }
+
+      map[teamKey].push(entry);
+      return map;
+    }, {});
+}
+
+function formatBaseballFinalHitterLabel(entry, statType) {
+  const hitterName = formatCompactAthleteName(entry?.name, '');
+  if (!hitterName) {
+    return '';
+  }
+
+  const count = Number(entry?.count);
+  if (Number.isFinite(count) && count > 1) {
+    return statType === 'RBI'
+      ? `${hitterName} ${count} RBI`
+      : `${hitterName} ${count}x`;
+  }
+
+  return hitterName;
+}
+
+function getBaseballFinalScoringSummary(gameData) {
+  const homeRunsByTeam = groupBaseballFinalHittersByTeam(getTrustedBaseballFinalHomeRuns(gameData));
+  const rbisByTeam = groupBaseballFinalHittersByTeam(getTrustedBaseballFinalRbis(gameData));
+  const orderedTeamKeys = getBaseballFinalTeamOrder(gameData);
+  const teamKeys = [
+    ...orderedTeamKeys,
+    ...Object.keys(homeRunsByTeam),
+    ...Object.keys(rbisByTeam)
+  ].filter((teamKey, index, list) => list.indexOf(teamKey) === index);
+
+  const sections = teamKeys.reduce((items, teamKey) => {
+    if (Array.isArray(homeRunsByTeam[teamKey]) && homeRunsByTeam[teamKey].length > 0) {
+      items.push({ teamKey, statType: 'HR', entries: homeRunsByTeam[teamKey] });
+      return items;
+    }
+
+    if (Array.isArray(rbisByTeam[teamKey]) && rbisByTeam[teamKey].length > 0) {
+      items.push({ teamKey, statType: 'RBI', entries: rbisByTeam[teamKey] });
+    }
+
+    return items;
+  }, []);
+
+  if (sections.length === 0) {
+    return {
+      label: '',
+      text: ''
+    };
+  }
+
+  const hasHomeRunSection = sections.some((section) => section.statType === 'HR');
+  const hasRbiSection = sections.some((section) => section.statType === 'RBI');
+  const label = hasHomeRunSection && hasRbiSection
+    ? 'HR/RBI'
+    : (hasHomeRunSection ? 'HR' : 'RBI');
+  const showStatTypeInText = hasHomeRunSection && hasRbiSection;
+
+  const text = sections
+    .map((section) => {
+      const hitterText = section.entries
+        .map((entry) => formatBaseballFinalHitterLabel(entry, section.statType))
+        .filter(Boolean)
+        .join(', ');
+
+      if (!hitterText) {
+        return '';
+      }
+
+      const parts = [];
+      if (section.teamKey) {
+        parts.push(section.teamKey);
+      }
+      if (showStatTypeInText) {
+        parts.push(section.statType);
+      }
+      parts.push(hitterText);
+
+      return parts.join(' ');
+    })
+    .filter(Boolean)
+    .join('; ');
+
+  return { label, text };
+}
+
+function getBaseballFinalDetails(gameData) {
+  if (!isBaseballLeague(gameData?.league)) {
+    return null;
+  }
+
+  const event = gameData?.event;
+  const competition = event?.competitions?.[0];
+  const status = event?.status?.type?.state || '';
+  if (status !== 'post' || !competition) {
+    return null;
+  }
+
+  const serverDetails = event?.baseballFinalDetails || {};
+  const decisions = [
+    serverDetails?.decisions?.winner?.name ? { label: 'W', name: formatCompactAthleteName(serverDetails.decisions.winner.name) } : null,
+    serverDetails?.decisions?.loser?.name ? { label: 'L', name: formatCompactAthleteName(serverDetails.decisions.loser.name) } : null,
+    serverDetails?.decisions?.save?.name ? { label: 'S', name: formatCompactAthleteName(serverDetails.decisions.save.name) } : null
+  ].filter(Boolean);
+
+  const scoringSummary = getBaseballFinalScoringSummary(gameData);
+
+  return {
+    decisions,
+    scoringSummaryLabel: scoringSummary.label,
+    scoringSummaryText: scoringSummary.text
+  };
 }
 
 function getBaseOccupancyFlag(baseValue) {
@@ -2731,6 +4564,18 @@ function renderBaseballDiamondMarkup(details) {
   `;
 }
 
+function renderBaseballTeamMarkup({ side, logo, name, displayName, record }) {
+  return `
+    <div class="sports-team ${side}">
+      <img class="sports-team-logo" src="${logo}" alt="${name}" onerror="this.style.display='none'">
+      <div class="sports-team-body">
+        <span class="sports-team-name">${displayName}</span>
+        ${record ? `<span class="sports-team-record">${record}</span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
 function renderBaseballLiveCard(gameData, teams) {
   const details = getBaseballLiveDetails(gameData);
   if (!details) {
@@ -2738,6 +4583,8 @@ function renderBaseballLiveCard(gameData, teams) {
   }
 
   const { awayTeam, homeTeam, awayName, homeName, awayNameDisplay, homeNameDisplay, awayLogo, homeLogo, awayScore, homeScore } = teams;
+  const awayRecord = getTeamRecordText(awayTeam);
+  const homeRecord = getTeamRecordText(homeTeam);
   const countText = [
     details.balls !== null ? `B${details.balls}` : null,
     details.strikes !== null ? `S${details.strikes}` : null,
@@ -2746,35 +4593,175 @@ function renderBaseballLiveCard(gameData, teams) {
 
   const awayBatting = String(awayTeam?.homeAway || '').toLowerCase() !== 'home' && /^top/i.test(details.inningState);
   const battingLabel = awayBatting ? awayName : homeName;
+  const battingText = battingLabel ? `At Bat: ${battingLabel}` : '';
 
   return `
-    <div class="sports-game sports-game--live-baseball">
-      <div class="sports-game-matchup sports-game-matchup--live-baseball">
-        <div class="sports-team away">
-          <img class="sports-team-logo" src="${awayLogo}" alt="${awayName}" onerror="this.style.display='none'">
-          <span class="sports-team-name">${awayNameDisplay}</span>
-        </div>
+    <div class="sports-game sports-game--baseball sports-game--live-baseball">
+      <div class="sports-game-matchup sports-game-matchup--baseball sports-game-matchup--live-baseball">
+        ${renderBaseballTeamMarkup({
+          side: 'away',
+          logo: awayLogo,
+          name: awayName,
+          displayName: awayNameDisplay,
+          record: awayRecord
+        })}
         <div class="sports-score-block sports-score-block--baseball-live">
           <span class="sports-score-num">${awayScore}</span>
           <span class="sports-score-num">${homeScore}</span>
         </div>
-        <div class="sports-team home">
-          <img class="sports-team-logo" src="${homeLogo}" alt="${homeName}" onerror="this.style.display='none'">
-          <span class="sports-team-name">${homeNameDisplay}</span>
-        </div>
+        ${renderBaseballTeamMarkup({
+          side: 'home',
+          logo: homeLogo,
+          name: homeName,
+          displayName: homeNameDisplay,
+          record: homeRecord
+        })}
       </div>
       <div class="sports-baseball-live-row">
         ${renderBaseballDiamondMarkup(details)}
         <div class="sports-baseball-live-meta">
-          <div class="sports-status live">
-            <span class="sports-live-dot"></span>${details.inningState}
+          <div class="sports-baseball-live-topline">
+            <div class="sports-status live">
+              <span class="sports-live-dot"></span>${details.inningState}
+            </div>
+            ${battingText ? `<div class="sports-baseball-batting">${battingText}</div>` : ''}
           </div>
-          <div class="sports-baseball-count">${countText || battingLabel}</div>
-          <div class="sports-baseball-players">
-            <span>B: ${details.batterName}</span>
-            <span>P: ${details.pitcherName}</span>
+          ${countText ? `<div class="sports-baseball-count">${countText}</div>` : ''}
+          <div class="sports-baseball-player-line">
+            <span class="sports-baseball-player-label">Batter</span>
+            <span class="sports-baseball-player-value">${details.batterName}</span>
+          </div>
+          <div class="sports-baseball-player-line">
+            <span class="sports-baseball-player-label">Pitcher</span>
+            <span class="sports-baseball-player-value">${details.pitcherName}</span>
           </div>
         </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderBaseballFinalCard(gameData, teams, statusText) {
+  const details = getBaseballFinalDetails(gameData);
+  if (!details) {
+    return '';
+  }
+
+  const {
+    awayTeam,
+    homeTeam,
+    awayName,
+    homeName,
+    awayNameDisplay,
+    homeNameDisplay,
+    awayLogo,
+    homeLogo,
+    awayScore,
+    homeScore
+  } = teams;
+  const awayRecord = getTeamRecordText(awayTeam);
+  const homeRecord = getTeamRecordText(homeTeam);
+
+  return `
+    <div class="sports-game sports-game--baseball sports-game--final-baseball">
+      <div class="sports-game-matchup sports-game-matchup--baseball">
+        ${renderBaseballTeamMarkup({
+          side: 'away',
+          logo: awayLogo,
+          name: awayName,
+          displayName: awayNameDisplay,
+          record: awayRecord
+        })}
+        <div class="sports-score-block">
+          <span class="sports-score-num">${awayScore}</span>
+          <span class="sports-score-num">${homeScore}</span>
+        </div>
+        ${renderBaseballTeamMarkup({
+          side: 'home',
+          logo: homeLogo,
+          name: homeName,
+          displayName: homeNameDisplay,
+          record: homeRecord
+        })}
+      </div>
+      <div class="sports-status final">${statusText}</div>
+      <div class="sports-baseball-final-meta">
+        ${details.decisions.length > 0 ? `
+          <div class="sports-baseball-final-decisions sports-baseball-final-decisions--${Math.min(details.decisions.length, 3)}">
+            ${details.decisions.map((decision) => `
+              <span class="sports-baseball-final-decision">
+                <span class="sports-baseball-final-label">${decision.label}</span>
+                <span class="sports-baseball-final-value">${decision.name}</span>
+              </span>
+            `).join('')}
+          </div>
+        ` : ''}
+        ${details.scoringSummaryText && details.scoringSummaryLabel ? `
+          <div class="sports-baseball-meta-line sports-baseball-final-homers">
+            <span class="sports-baseball-meta-label">${details.scoringSummaryLabel}</span>
+            <span class="sports-baseball-meta-value">${details.scoringSummaryText}</span>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderBaseballPregameCard(gameData, teams, statusText) {
+  const competition = gameData?.event?.competitions?.[0];
+  if (!competition) {
+    return '';
+  }
+
+  const {
+    awayTeam,
+    homeTeam,
+    awayName,
+    homeName,
+    awayNameDisplay,
+    homeNameDisplay,
+    awayLogo,
+    homeLogo
+  } = teams;
+
+  const awayRecord = getTeamRecordText(awayTeam);
+  const homeRecord = getTeamRecordText(homeTeam);
+  const venue = competition?.venue?.fullName || competition?.venue?.address?.city || '';
+  const broadcast = getCompetitionBroadcastText(competition);
+  const detailLines = [
+    venue ? { label: 'Venue', value: venue } : null,
+    broadcast ? { label: 'TV', value: broadcast } : null
+  ].filter(Boolean);
+
+  return `
+    <div class="sports-game sports-game--baseball sports-game--pregame-baseball">
+      <div class="sports-game-matchup sports-game-matchup--baseball">
+        ${renderBaseballTeamMarkup({
+          side: 'away',
+          logo: awayLogo,
+          name: awayName,
+          displayName: awayNameDisplay,
+          record: awayRecord
+        })}
+        <div class="sports-score-block sports-score-block--baseball-pregame">
+          <span class="sports-score-vs">vs</span>
+        </div>
+        ${renderBaseballTeamMarkup({
+          side: 'home',
+          logo: homeLogo,
+          name: homeName,
+          displayName: homeNameDisplay,
+          record: homeRecord
+        })}
+      </div>
+      <div class="sports-status sports-status--baseball-pregame">${statusText}</div>
+      <div class="sports-baseball-pregame-meta">
+        ${detailLines.map((line) => `
+          <div class="sports-baseball-meta-line">
+            <span class="sports-baseball-meta-label">${line.label}</span>
+            <span class="sports-baseball-meta-value">${line.value}</span>
+          </div>
+        `).join('')}
       </div>
     </div>
   `;
@@ -2824,11 +4811,47 @@ function renderGameCard(gameData) {
       homeScore
     });
     if (baseballCard) {
-      return baseballCard;
+      return wrapGameCardMarkup(gameData, baseballCard);
     }
   }
 
-  return `
+  if (isFinal && isBaseballLeague(gameData?.league)) {
+    const baseballFinalCard = renderBaseballFinalCard(gameData, {
+      awayTeam,
+      homeTeam,
+      awayName,
+      homeName,
+      awayNameDisplay,
+      homeNameDisplay,
+      awayLogo,
+      homeLogo,
+      awayScore,
+      homeScore
+    }, statusText);
+    if (baseballFinalCard) {
+      return wrapGameCardMarkup(gameData, baseballFinalCard);
+    }
+  }
+
+  if (isBaseballLeague(gameData?.league)) {
+    const baseballPregameCard = renderBaseballPregameCard(gameData, {
+      awayTeam,
+      homeTeam,
+      awayName,
+      homeName,
+      awayNameDisplay,
+      homeNameDisplay,
+      awayLogo,
+      homeLogo,
+      awayScore,
+      homeScore
+    }, statusText);
+    if (baseballPregameCard) {
+      return wrapGameCardMarkup(gameData, baseballPregameCard);
+    }
+  }
+
+  return wrapGameCardMarkup(gameData, `
     <div class="sports-game">
       <div class="sports-game-matchup">
         <div class="sports-team away">
@@ -2849,7 +4872,7 @@ function renderGameCard(gameData) {
         ${isLive ? '<span class="sports-live-dot"></span>' : ''}${statusText}
       </div>
     </div>
-  `;
+  `);
 }
 
 /**
@@ -2863,6 +4886,8 @@ async function refreshSportsPanel() {
   }
 
   if (!sportsCycler) return;
+
+  await ensureFollowedTeamPreviousDaySportsData(getFollowedTeams());
 
   const activeFollowedTeams = getActiveFollowedTeams();
   await refreshFollowedTeamContext(activeFollowedTeams);

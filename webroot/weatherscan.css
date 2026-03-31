@@ -132,6 +132,24 @@ button {
   text-shadow: #000 3px 3px 3px;
 }
 
+#window-controls {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  z-index: 1000;
+}
+
+#window-controls button {
+  min-width: 132px;
+  padding: 10px 18px;
+  white-space: nowrap;
+  text-align: center;
+}
+
 /*SETTINGS PANEL*/
 .location-warning {
   position: absolute;
@@ -641,27 +659,27 @@ button {
 }
 #date-time * {
   font-family: "Berthold Akzidenz Grotesk BE";
-  color: #ffffff;
-  font-weight: 700;
+  color: #e8e8e8;
+  font-weight: 500;
   font-style: normal;
   font-stretch: expanded;
-  font-size: 52px;
+  font-size: 40px;
 }
 #date-time {
   position: absolute;
   font-family: "Berthold Akzidenz Grotesk BE";
-  color: #ffffff;
-  font-weight: 700;
+  color: #e8e8e8;
+  font-weight: 500;
   font-style: normal;
   font-stretch: expanded;
-  font-size: 52px;
-  bottom: 140px;
+  font-size: 40px;
+  bottom: 80px;
   right: 123px;
   text-align: right;
-  z-index: 25;
-  text-shadow: 2px 2px 6px #000, 0 0 12px rgba(0,0,0,0.8);
+  z-index: 10;
+  text-shadow: 2px 2px #000;
   letter-spacing: 2.5px;
-  width: 500px;
+  width: 400px;
 }
 #time {
   position: absolute;
@@ -726,6 +744,7 @@ button {
   width: 1620px;
   height: 1080px;
   z-index: 4 !important;
+  filter: drop-shadow(2px 2px 0 #000);
 }
 .satradar-cont {
   position: absolute;
@@ -750,6 +769,7 @@ button {
   width: 1620px;
   height: 1080px;
   z-index: 4 !important;
+  filter: drop-shadow(2px 2px 0 #000);
 }
 .radar-overlay {
   z-index: 8 !important;
@@ -1104,18 +1124,16 @@ button {
   margin-left: 10%;
   transform: scale(1.1);
 }
-.extra-extended-forecast .slide-data .day .high {
-  position: absolute;
-  margin-left: 55%;
-  width: 27%;
-  text-align: right;
-  font-size: 99px;
-  top: 479px;
-  font-stretch: condensed;
-  text-shadow: 2px 2px #000;
-  font-weight: 400;
-  color: #ddc879;
-  left: -100px;
+.extended-forecast .slide-data .day .high {
+    position: absolute;
+    width: 44%;
+    text-align: right;
+    font-size: 99px;
+    top: 479px;
+    font-stretch: condensed;
+    text-shadow: 2px 2px #000;
+    font-weight: 400;
+    color: #ddc879;
 }
 .extra-extended-forecast .slide-data .day .divider {
   position: absolute;
@@ -2614,265 +2632,4 @@ button {
 }
 .mapboxgl-canvas {
   width: 1620px !important;
-}
-
-.sports-ticker {
-  position: absolute;
-  width: 1620px;
-  height: 130px;
-  top: 950px;
-  left: 0;
-  z-index: 20;
-  background: #000000;
-}
-.sports-ticker .sports-badge {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 160px;
-  height: 130px;
-  background: #c8102e;
-  font-size: 26px;
-  letter-spacing: 3px;
-  color: white;
-  text-align: center;
-  line-height: 130px;
-}
-.sports-ticker .sports-score {
-  position: absolute;
-  left: 200px;
-  top: 0;
-  right: 120px;
-  height: 130px;
-  font-size: 62px;
-  color: white;
-  font-family: "Berthold Akzidenz Grotesk BE";
-  line-height: 130px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-shadow: 1px 1px 4px #000;
-  letter-spacing: 1.5px;
-}
-.sports-ticker .sports-detail {
-  position: absolute;
-  left: 200px;
-  bottom: 10px;
-  right: 120px;
-  height: 44px;
-  font-size: 21px;
-  color: rgba(255,255,255,0.7);
-  font-family: "Berthold Akzidenz Grotesk BE";
-  line-height: 22px;
-  white-space: nowrap;
-  overflow: hidden;
-  letter-spacing: 1px;
-  text-align: right;
-}
-.sports-ticker .sports-counter {
-  display: none;
-}
-.sports-ticker .sports-badge .league-logo {
-  height: 90px;
-  width: auto;
-  vertical-align: middle;
-  filter: drop-shadow(1px 1px 3px rgba(0,0,0,0.5));
-}
-.sports-ticker .sports-score .sport-logo {
-  height: 100px;
-  width: auto;
-  vertical-align: middle;
-  margin-right: 8px;
-  filter: drop-shadow(0 0 3px rgba(255,255,255,0.3)) drop-shadow(0 0 1px rgba(255,255,255,0.2));
-}
-.sports-ticker .sports-score .sport-abbr {
-  font-size: 62px;
-  vertical-align: middle;
-}
-.sports-ticker .sports-score .sport-rec {
-  font-size: 34px;
-  color: rgba(255,255,255,0.6);
-  vertical-align: middle;
-  margin-right: 12px;
-}
-.sports-ticker .sports-score .sport-score-num {
-  font-size: 62px;
-  vertical-align: middle;
-  margin-right: 4px;
-}
-.sports-ticker .sports-score .sport-vs {
-  font-size: 44px;
-  color: rgba(255,255,255,0.6);
-  vertical-align: middle;
-}
-.sports-ticker .sports-score .sport-rank {
-  font-size: 30px;
-  color: rgba(255,255,255,0.75);
-  vertical-align: middle;
-  margin-right: 3px;
-}
-.sports-ticker .sports-score .sport-status {
-  font-size: 42px;
-  color: rgba(255,255,255,0.75);
-  vertical-align: middle;
-  letter-spacing: 1px;
-}
-
-/*SPORTS SCOREBOARD*/
-.sports-scoreboard {
-  position: absolute;
-  width: 1620px;
-  height: 1080px;
-  background: #08172b;
-  font-family: "Akzidenz Regular", sans-serif;
-  color: white;
-}
-.sports-scoreboard .slide-data {
-  position: absolute;
-  width: 1620px;
-  height: 950px;
-  display: flex;
-  flex-direction: column;
-}
-.sports-scoreboard .sb-header {
-  width: 100%;
-  height: 80px;
-  background: #132d52;
-  display: flex;
-  align-items: center;
-  padding: 0 40px;
-  box-sizing: border-box;
-  flex-shrink: 0;
-  border-bottom: 3px solid #1e4a80;
-}
-.sports-scoreboard .sb-title {
-  font-family: "Akzidenz Bold", sans-serif;
-  font-size: 46px;
-  letter-spacing: 4px;
-  color: white;
-}
-.sports-scoreboard .sb-body {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-.sports-scoreboard .sb-col {
-  flex: 1;
-  padding: 10px 16px;
-  box-sizing: border-box;
-  border-right: 1px solid rgba(255,255,255,0.1);
-}
-.sports-scoreboard .sb-col.right {
-  border-right: none;
-}
-.sports-scoreboard .sb-league-header {
-  display: flex;
-  align-items: center;
-  height: 44px;
-  background: rgba(255,255,255,0.07);
-  padding: 0 12px;
-  margin-bottom: 4px;
-  margin-top: 10px;
-}
-.sports-scoreboard .sb-col > .sb-league-header:first-child {
-  margin-top: 0;
-}
-.sports-scoreboard .sb-league-logo {
-  height: 28px;
-  width: auto;
-  margin-right: 10px;
-  filter: drop-shadow(0 0 2px rgba(255,255,255,0.2));
-}
-.sports-scoreboard .sb-league-name {
-  font-family: "Akzidenz Bold", sans-serif;
-  font-size: 20px;
-  letter-spacing: 3px;
-  color: rgba(255,255,255,0.65);
-}
-.sports-scoreboard .sb-game {
-  display: flex;
-  align-items: center;
-  height: 52px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  padding: 0 4px;
-}
-.sports-scoreboard .sb-team {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-}
-.sports-scoreboard .sb-team.home {
-  justify-content: flex-end;
-}
-.sports-scoreboard .sb-team-logo {
-  height: 36px;
-  width: auto;
-  flex-shrink: 0;
-  filter: drop-shadow(0 0 3px rgba(255,255,255,0.25)) drop-shadow(0 0 1px rgba(255,255,255,0.15));
-}
-.sports-scoreboard .sb-team.away .sb-team-logo {
-  margin-right: 8px;
-}
-.sports-scoreboard .sb-team.home .sb-team-logo {
-  margin-left: 8px;
-  margin-right: 0;
-}
-.sports-scoreboard .sb-abbr {
-  font-family: "Akzidenz Bold", sans-serif;
-  font-size: 24px;
-  letter-spacing: 1px;
-}
-.sports-scoreboard .sb-score {
-  font-family: "Akzidenz Bold", sans-serif;
-  font-size: 30px;
-  min-width: 32px;
-  text-align: center;
-}
-.sports-scoreboard .sb-team.away .sb-score {
-  margin-right: 6px;
-}
-.sports-scoreboard .sb-team.home .sb-score {
-  margin-right: 6px;
-  margin-left: 0;
-}
-.sports-scoreboard .sb-divider {
-  width: 16px;
-  text-align: center;
-  font-size: 22px;
-  color: rgba(255,255,255,0.4);
-  flex-shrink: 0;
-}
-.sports-scoreboard .sb-divider.sb-vs {
-  width: 32px;
-  font-size: 16px;
-  color: rgba(255,255,255,0.3);
-  flex-shrink: 0;
-}
-.sports-scoreboard .sb-status {
-  font-size: 16px;
-  color: rgba(255,255,255,0.6);
-  width: 90px;
-  text-align: right;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-.sports-scoreboard .sb-status.live {
-  color: #ff6b6b;
-}
-.sports-scoreboard .sb-rank {
-  font-size: 16px;
-  color: rgba(255,255,255,0.55);
-  margin: 0 3px;
-  flex-shrink: 0;
-}
-
-#drag-region {
-  -webkit-app-region: drag;
-  height: 30px;
-  width: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 9999;
-  background: transparent; /* You can change this to rgba(0,0,0,0.1) to test */
 }

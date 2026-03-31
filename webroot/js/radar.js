@@ -123,7 +123,7 @@ function createMaps() {
   });
 }
 
-async function fetchRadarTimestamps(map, frameCount = 12) {
+async function fetchRadarTimestamps(map, frameCount) {
   var timestamps =
     map === locradar
       ? loctimestamps
@@ -134,8 +134,7 @@ async function fetchRadarTimestamps(map, frameCount = 12) {
   var mapType = map === satradar ? "sat" : "twcRadarMosaic";
   try {
     const response = await fetch(
-      `https://api.weather.com/v3/TileServer/series/productSet/PPAcore?filter=${mapType}&apiKey=${api_key}`,
-      { cache: "no-store" }
+      `https://api.weather.com/v3/TileServer/series/productSet/PPAcore?filter=${mapType}&apiKey=${api_key}`
     );
     const data = await response.json();
 
@@ -235,7 +234,7 @@ function animateRadar(map, timestamps) {
     }
   }, interval);
 
-  radarAnimation = setInterval(() => {
+  return setInterval(() => {
     animationInterval = setInterval(() => {
       setLayerVisibility(validLayers[currentIndex], "none");
       currentIndex = (currentIndex + 1) % validLayers.length;
@@ -295,7 +294,7 @@ async function startRadar(map) {
   clearInterval(radarAnimation);
   // timestamps = await fetchRadarTimestamps(map)
   // await addRadarLayers(map, timestamps)
-  const animation = animateRadar(map, timestamps);
+  radarAnimation = animateRadar(map, timestamps);
   map.resize();
 }
 /*

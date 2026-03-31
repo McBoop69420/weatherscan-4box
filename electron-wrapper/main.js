@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut } = require('electron');
+const { app, BrowserWindow, globalShortcut, shell } = require('electron');
 
 function triggerSlideAdvance(win) {
   if (!win || win.isDestroyed()) {
@@ -30,6 +30,25 @@ function createWindow () {
   });
 
   win.loadURL('http://localhost:8080');
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      shell.openExternal(url).catch(() => {});
+    }
+
+    return { action: 'deny' };
+  });
+
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!url || url.startsWith('http://localhost:8080')) {
+      return;
+    }
+
+    event.preventDefault();
+    if (/^https?:\/\//i.test(url)) {
+      shell.openExternal(url).catch(() => {});
+    }
+  });
 
   win.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') {

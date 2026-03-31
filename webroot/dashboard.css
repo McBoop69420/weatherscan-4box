@@ -164,6 +164,12 @@
 }
 
 /* Individual game cards */
+.sports-game-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
 .sports-game {
   background: rgba(0, 0, 0, 0.35);
   padding: 6px 8px;
@@ -173,21 +179,38 @@
   flex-direction: column;
   justify-content: center;
   gap: 3px;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.sports-game-link .sports-game {
+  cursor: pointer;
+}
+
+.sports-game-link:hover .sports-game,
+.sports-game-link:focus-visible .sports-game {
+  background: rgba(0, 0, 0, 0.46);
+  border-left-color: rgba(120, 204, 255, 0.95);
+  box-shadow: 0 0 0 1px rgba(120, 204, 255, 0.2), 0 8px 18px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+}
+
+.sports-game-link:focus-visible {
+  outline: none;
 }
 
 /* Game matchup row — 3-column: away | score | home */
 .sports-game-matchup {
   display: grid;
-  grid-template-columns: 1fr 70px 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(62px, max-content) minmax(0, 1fr);
   align-items: center;
-  column-gap: 10px;
+  column-gap: 8px;
 }
 
 /* Team display */
 .sports-team {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -208,19 +231,34 @@
 }
 
 .sports-team-name {
+  flex: 1 1 auto;
+  display: block;
+  min-width: 0;
   font-size: 14px;
   font-weight: bold;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.05;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.sports-team.home .sports-team-name {
+  text-align: right;
+}
+
+.sports-game:not(.sports-game--baseball) .sports-team-name {
+  font-size: 12px;
 }
 
 /* Score block — centered between teams */
 .sports-score-block {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
   justify-content: center;
   align-items: center;
   gap: 8px;
+  justify-self: center;
 }
 
 .sports-score-num {
@@ -228,8 +266,10 @@
   font-weight: bold;
   color: #ffffff;
   line-height: 1;
-  min-width: 24px;
+  min-width: 3ch;
   text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
 .sports-score-vs {
@@ -269,66 +309,232 @@
   animation: pulse 1.5s infinite;
 }
 
-.sports-game--live-baseball {
-  padding: 6px 7px;
-  gap: 4px;
+.sports-game--baseball {
+  padding: 8px 9px;
+  gap: 5px;
+  justify-content: flex-start;
 }
 
-.sports-game--live-baseball .sports-team-logo {
-  width: 22px;
-  height: 22px;
+.sports-game-matchup--baseball {
+  grid-template-columns: minmax(0, 1fr) 66px minmax(0, 1fr);
+  align-items: start;
 }
 
-.sports-game--live-baseball .sports-team-name {
-  font-size: 12px;
+.sports-game--baseball .sports-team {
+  align-items: flex-start;
+  gap: 7px;
 }
 
-.sports-game--live-baseball .sports-score-num {
-  font-size: 22px;
-  min-width: 18px;
-}
-
-.sports-game--live-baseball .sports-status {
-  font-size: 10px;
-}
-
-.sports-game-matchup--live-baseball {
-  grid-template-columns: 1fr 58px 1fr;
-  column-gap: 6px;
-}
-
-.sports-score-block--baseball-live {
-  gap: 6px;
-}
-
-.sports-baseball-live-row {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-}
-
-.sports-baseball-live-meta {
+.sports-game--baseball .sports-team-body {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.sports-baseball-count,
-.sports-baseball-players {
-  font-size: 10px;
-  line-height: 1.1;
-  color: rgba(255, 255, 255, 0.72);
+.sports-game--baseball .sports-team.home .sports-team-body {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.sports-game--baseball .sports-team-logo {
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+}
+
+.sports-game--baseball .sports-team-name {
+  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.sports-baseball-players {
+.sports-game--baseball .sports-team-record {
+  min-width: 0;
+  font-size: 10px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.58);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sports-game--baseball .sports-score-block {
+  align-items: flex-start;
+  padding-top: 1px;
+}
+
+.sports-game--baseball .sports-score-num {
+  font-size: 24px;
+  min-width: 18px;
+}
+
+.sports-game--live-baseball {
+  gap: 6px;
+}
+
+.sports-game--final-baseball {
+  gap: 5px;
+}
+
+.sports-game--pregame-baseball {
+  gap: 6px;
+}
+
+.sports-game-matchup--live-baseball {
+  column-gap: 7px;
+}
+
+.sports-score-block--baseball-live {
+  gap: 6px;
+}
+
+.sports-score-block--baseball-pregame .sports-score-vs {
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.sports-baseball-live-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.sports-baseball-live-meta {
+  min-width: 0;
   display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sports-baseball-live-topline {
+  min-width: 0;
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sports-game--live-baseball .sports-status {
+  font-size: 10px;
+}
+
+.sports-baseball-batting,
+.sports-baseball-count {
+  font-size: 10px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sports-baseball-batting {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.sports-baseball-count {
+  font-weight: bold;
+  letter-spacing: 0.03em;
+  color: rgba(210, 234, 255, 0.9);
+}
+
+.sports-baseball-player-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  line-height: 1.15;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.sports-baseball-player-label,
+.sports-baseball-meta-label,
+.sports-baseball-final-label {
+  flex-shrink: 0;
+  font-weight: bold;
+  color: rgba(210, 234, 255, 0.92);
+}
+
+.sports-baseball-player-label {
+  width: 38px;
+}
+
+.sports-baseball-player-value,
+.sports-baseball-meta-value,
+.sports-baseball-final-value {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sports-baseball-pregame-meta,
+.sports-baseball-final-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sports-status--baseball-pregame {
+  color: rgba(255, 255, 255, 0.56);
+  font-weight: bold;
+  letter-spacing: 0.03em;
+}
+
+.sports-baseball-meta-line {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 10px;
+  line-height: 1.15;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.sports-baseball-final-decisions {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.sports-baseball-final-decisions--1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sports-baseball-final-decisions--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sports-baseball-final-decisions--3 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sports-baseball-final-decision {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  line-height: 1.1;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.sports-baseball-final-homers {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.sports-baseball-final-homers .sports-baseball-meta-value {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .sports-baseball-diamond {
@@ -523,8 +729,29 @@
   grid-template-rows: auto auto 1fr;
 }
 
+.sports-team-focus--nhl-division-standings {
+  grid-template-rows: auto 1fr;
+  gap: 12px;
+}
+
+.sports-team-focus--combined-standings,
+.sports-team-focus--mlb-full-division {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 18px 22px 14px;
+}
+
+.sports-team-focus--no-kicker {
+  gap: 8px;
+  padding-top: 14px;
+}
+
 .sports-team-focus-header {
   text-align: center;
+}
+
+.sports-team-focus--nhl-division-standings .sports-team-focus-header {
+  text-align: left;
 }
 
 .sports-team-focus-subtitle {
@@ -532,6 +759,12 @@
   font-weight: 700;
   letter-spacing: 1px;
   line-height: 1.1;
+}
+
+.sports-team-focus--nhl-division-standings .sports-team-focus-subtitle {
+  font-size: 24px;
+  letter-spacing: 0.3px;
+  text-transform: none;
 }
 
 .sports-team-focus-summary {
@@ -554,6 +787,12 @@
   grid-template-columns: minmax(0, 1fr) 210px minmax(0, 1fr);
 }
 
+.sports-team-focus--combined-standings .sports-team-focus-scoreboard--compact,
+.sports-team-focus--mlb-full-division .sports-team-focus-scoreboard--compact {
+  grid-template-columns: minmax(0, 1fr) 190px minmax(0, 1fr);
+  gap: 12px;
+}
+
 .sports-team-focus-lower {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
@@ -565,6 +804,11 @@
   grid-template-columns: 1fr;
 }
 
+.sports-team-focus-lower--mlb-full-division {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 10px;
+}
+
 .sports-team-focus-club {
   display: flex;
   flex-direction: column;
@@ -572,6 +816,11 @@
   text-align: center;
   gap: 6px;
   min-width: 0;
+}
+
+.sports-team-focus--combined-standings .sports-team-focus-club,
+.sports-team-focus--mlb-full-division .sports-team-focus-club {
+  gap: 4px;
 }
 
 .sports-team-focus-center {
@@ -584,10 +833,21 @@
   object-fit: contain;
 }
 
+.sports-team-focus--combined-standings .sports-team-focus-logo,
+.sports-team-focus--mlb-full-division .sports-team-focus-logo {
+  width: 52px;
+  height: 52px;
+}
+
 .sports-team-focus-name {
   font-size: 19px;
   font-weight: 700;
   line-height: 1.1;
+}
+
+.sports-team-focus--combined-standings .sports-team-focus-name,
+.sports-team-focus--mlb-full-division .sports-team-focus-name {
+  font-size: 17px;
 }
 
 .sports-team-focus-meta,
@@ -597,11 +857,25 @@
   line-height: 1.15;
 }
 
+.sports-team-focus--combined-standings .sports-team-focus-meta,
+.sports-team-focus--combined-standings .sports-team-focus-detail,
+.sports-team-focus--mlb-full-division .sports-team-focus-meta,
+.sports-team-focus--mlb-full-division .sports-team-focus-detail {
+  font-size: 13px;
+  line-height: 1.08;
+}
+
 .sports-team-focus-score {
   font-size: 34px;
   font-weight: 700;
   line-height: 1;
   min-height: 34px;
+}
+
+.sports-team-focus--combined-standings .sports-team-focus-score,
+.sports-team-focus--mlb-full-division .sports-team-focus-score {
+  font-size: 30px;
+  min-height: 30px;
 }
 
 .sports-team-focus-status {
@@ -610,11 +884,23 @@
   margin-bottom: 6px;
 }
 
+.sports-team-focus--combined-standings .sports-team-focus-status,
+.sports-team-focus--mlb-full-division .sports-team-focus-status {
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
 .sports-team-focus-versus {
   font-size: 30px;
   font-weight: 700;
   letter-spacing: 2px;
   margin-bottom: 8px;
+}
+
+.sports-team-focus--combined-standings .sports-team-focus-versus,
+.sports-team-focus--mlb-full-division .sports-team-focus-versus {
+  font-size: 24px;
+  margin-bottom: 4px;
 }
 
 .sports-team-standings-block,
@@ -634,15 +920,93 @@
   margin-bottom: 8px;
 }
 
+.sports-team-focus--mlb-full-division .sports-team-standings-block,
+.sports-team-focus--mlb-full-division .sports-team-news,
+.sports-team-focus--combined-standings .sports-team-standings-block,
+.sports-team-focus--combined-standings .sports-team-news {
+  padding: 10px 12px;
+}
+
+.sports-team-focus--mlb-full-division .sports-team-news-title,
+.sports-team-focus--combined-standings .sports-team-news-title {
+  font-size: 13px;
+  letter-spacing: 1.8px;
+  margin-bottom: 6px;
+}
+
+.sports-team-focus--mlb-full-division .sports-standings-table,
+.sports-team-focus--combined-standings .sports-standings-table {
+  gap: 4px;
+}
+
+.sports-team-focus--mlb-full-division .sports-standings-row,
+.sports-team-focus--combined-standings .sports-standings-row {
+  grid-template-columns: 18px minmax(0, 1fr) 64px 52px;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.sports-team-focus--combined-standings .sports-standings-row--soccer {
+  grid-template-columns: 16px minmax(0, 1fr) 20px 58px 74px 48px;
+}
+
+.sports-team-focus--mlb-full-division .sports-standings-rank,
+.sports-team-focus--mlb-full-division .sports-standings-record,
+.sports-team-focus--mlb-full-division .sports-standings-metric,
+.sports-team-focus--mlb-full-division .sports-standings-team,
+.sports-team-focus--combined-standings .sports-standings-rank,
+.sports-team-focus--combined-standings .sports-standings-record,
+.sports-team-focus--combined-standings .sports-standings-metric,
+.sports-team-focus--combined-standings .sports-standings-team {
+  font-size: 12px;
+}
+
+.sports-team-focus--mlb-full-division .sports-standings-logo,
+.sports-team-focus--combined-standings .sports-standings-logo {
+  width: 14px;
+  height: 14px;
+}
+
+.sports-team-focus--mlb-full-division .sports-team-news-item,
+.sports-team-focus--combined-standings .sports-team-news-item {
+  padding: 6px 0;
+}
+
+.sports-team-focus--mlb-full-division .sports-team-news-meta,
+.sports-team-focus--combined-standings .sports-team-news-meta {
+  font-size: 11px;
+}
+
+.sports-team-focus--mlb-full-division .sports-team-news-headline,
+.sports-team-focus--combined-standings .sports-team-news-headline {
+  font-size: 14px;
+  line-height: 1.08;
+  -webkit-line-clamp: 2;
+}
+
 .sports-team-stats-block {
   display: grid;
   grid-template-rows: auto 1fr;
   min-height: 0;
 }
 
+.sports-team-stats-block--dense .sports-team-news-title {
+  font-size: 14px;
+  letter-spacing: 1.6px;
+  margin-bottom: 6px;
+}
+
 .sports-postgame-stats {
   display: grid;
   gap: 6px;
+}
+
+.sports-postgame-stats--compare-grid {
+  gap: 8px;
+}
+
+.sports-postgame-stats--dense {
+  gap: 4px;
 }
 
 .sports-postgame-stats--feature {
@@ -664,6 +1028,22 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
+.sports-postgame-stats--dense .sports-postgame-stats-header,
+.sports-postgame-stats--dense .sports-postgame-stat-row {
+  grid-template-columns: minmax(0, 1fr) 60px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.sports-postgame-stats--dense .sports-postgame-stats-header {
+  padding-bottom: 3px;
+}
+
+.sports-postgame-stats--compare-grid .sports-postgame-stats-header {
+  grid-template-columns: minmax(0, 1fr) 92px minmax(0, 1fr);
+  gap: 10px;
+  padding-bottom: 6px;
+}
+
 .sports-postgame-team {
   display: flex;
   align-items: center;
@@ -671,6 +1051,12 @@
   font-size: 13px;
   font-weight: 700;
   min-width: 0;
+}
+
+.sports-postgame-team span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sports-postgame-team--home {
@@ -684,6 +1070,25 @@
   flex-shrink: 0;
 }
 
+.sports-postgame-stats--dense .sports-postgame-team {
+  gap: 5px;
+  font-size: 12px;
+}
+
+.sports-postgame-stats--compare-grid .sports-postgame-team {
+  font-size: 12px;
+}
+
+.sports-postgame-stats--dense .sports-postgame-team-logo {
+  width: 16px;
+  height: 16px;
+}
+
+.sports-postgame-stats--compare-grid .sports-postgame-team-logo {
+  width: 16px;
+  height: 16px;
+}
+
 .sports-postgame-stat-label,
 .sports-postgame-stat-name {
   text-align: center;
@@ -693,9 +1098,115 @@
   color: rgba(255, 255, 255, 0.72);
 }
 
+.sports-postgame-stats--dense .sports-postgame-stat-label,
+.sports-postgame-stats--dense .sports-postgame-stat-name {
+  font-size: 11px;
+  letter-spacing: 0.8px;
+}
+
 .sports-postgame-stat-row {
   padding: 6px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sports-postgame-stats--dense .sports-postgame-stat-row {
+  padding: 4px 0;
+}
+
+.sports-postgame-stat-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.sports-postgame-stat-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sports-postgame-stat-card-side {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+}
+
+.sports-postgame-stat-card-side--leader {
+  background: rgba(120, 204, 255, 0.12);
+  border-color: rgba(120, 204, 255, 0.38);
+}
+
+.sports-postgame-stat-card-side--featured.sports-postgame-stat-card-side--leader {
+  box-shadow: inset 3px 0 0 rgba(120, 204, 255, 0.68);
+}
+
+.sports-postgame-stat-card-side--opponent.sports-postgame-stat-card-side--leader {
+  box-shadow: inset -3px 0 0 rgba(120, 204, 255, 0.68);
+}
+
+.sports-postgame-stat-card-value {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+.sports-postgame-stat-card-center {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  padding: 4px 0;
+}
+
+.sports-postgame-stat-card-name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.sports-postgame-stat-card-detail {
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.sports-postgame-extra-list {
+  display: grid;
+  gap: 6px;
+  padding-top: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sports-postgame-extra-item {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.sports-postgame-extra-label {
+  font-weight: 700;
+  letter-spacing: 0.9px;
+  color: rgba(255, 255, 255, 0.64);
+}
+
+.sports-postgame-extra-value {
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .sports-postgame-stat-row--feature {
@@ -712,6 +1223,10 @@
   font-size: 18px;
   font-weight: 700;
   text-align: center;
+}
+
+.sports-postgame-stats--dense .sports-postgame-stat-value {
+  font-size: 16px;
 }
 
 .sports-postgame-stat-value--feature {
@@ -763,10 +1278,160 @@
   overflow: hidden;
 }
 
+.sports-team-linescore--live-state {
+  display: grid;
+  gap: 10px;
+}
+
+.sports-team-linescore--live-state .sports-team-news-title {
+  margin-bottom: 0;
+}
+
+.sports-feature-live-state {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.sports-feature-live-state-diamond-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sports-feature-live-state-diamond-wrap .sports-baseball-diamond {
+  width: 48px;
+  height: 48px;
+  margin: 0;
+}
+
+.sports-feature-live-state-diamond-wrap .sports-baseball-base {
+  width: 12px;
+  height: 12px;
+}
+
+.sports-feature-live-state-diamond-wrap .sports-baseball-base--home {
+  left: 18px;
+  bottom: 0;
+}
+
+.sports-feature-live-state-diamond-wrap .sports-baseball-base--first {
+  right: 2px;
+  top: 17px;
+}
+
+.sports-feature-live-state-diamond-wrap .sports-baseball-base--second {
+  left: 18px;
+  top: 2px;
+}
+
+.sports-feature-live-state-diamond-wrap .sports-baseball-base--third {
+  left: 2px;
+  top: 17px;
+}
+
+.sports-feature-live-state-bases-label,
+.sports-feature-live-state-label,
+.sports-feature-live-state-metric-label,
+.sports-feature-live-state-player-label,
+.sports-feature-live-state-linescore-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.sports-feature-live-state-bases-value {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.sports-feature-live-state-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sports-feature-live-state-team {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sports-feature-live-state-phase {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.sports-feature-live-state-side {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.sports-feature-live-state-counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sports-feature-live-state-metric,
+.sports-feature-live-state-player {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sports-feature-live-state-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+}
+
+.sports-feature-live-state-metric-value {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.sports-feature-live-state-players {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sports-feature-live-state-player-value {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .sports-linescore-grid {
   display: grid;
   gap: 4px;
   align-items: stretch;
+}
+
+.sports-linescore-grid--compact {
+  gap: 3px;
 }
 
 .sports-linescore-cell {
@@ -799,6 +1464,10 @@
   font-size: 17px;
 }
 
+.sports-linescore-cell--summary {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .sports-linescore-logo {
   width: 20px;
   height: 20px;
@@ -811,6 +1480,32 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sports-linescore-grid--compact .sports-linescore-cell {
+  min-height: 28px;
+  padding: 4px 3px;
+  font-size: 12px;
+}
+
+.sports-linescore-grid--compact .sports-linescore-cell--head {
+  min-height: 22px;
+  font-size: 10px;
+}
+
+.sports-linescore-grid--compact .sports-linescore-cell--team,
+.sports-linescore-grid--compact .sports-linescore-cell--teamrow {
+  padding-left: 7px;
+}
+
+.sports-linescore-grid--compact .sports-linescore-cell--total {
+  font-size: 14px;
+}
+
+.sports-linescore-grid--compact .sports-linescore-logo {
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
 }
 
 .sports-league-standings {
@@ -885,13 +1580,13 @@
 }
 
 .sports-league-standings .sports-standings-row {
-  grid-template-columns: 24px 16px minmax(0, 1fr) 62px 46px;
+  grid-template-columns: 16px minmax(0, 1fr) 62px 46px;
   gap: 4px;
   padding: 3px 5px;
 }
 
 .sports-league-standings .sports-standings-row--soccer {
-  grid-template-columns: 22px 14px minmax(0, 1fr) 20px 52px 62px 42px;
+  grid-template-columns: 14px minmax(0, 1fr) 20px 52px 62px 42px;
 }
 
 .sports-league-standings .sports-standings-rank,
@@ -959,7 +1654,7 @@
 }
 
 .sports-league-standings--nhl .sports-standings-row {
-  grid-template-columns: 20px 14px minmax(0, 1fr) 58px 42px;
+  grid-template-columns: 14px minmax(0, 1fr) 58px 42px;
   gap: 4px;
   padding: 4px 7px;
   border-radius: 10px;
@@ -976,6 +1671,249 @@
 .sports-league-standings--nhl .sports-standings-logo {
   width: 13px;
   height: 13px;
+}
+
+.sports-league-standings--mlb {
+  gap: 4px;
+  padding: 8px 10px 8px;
+}
+
+.sports-league-standings-mlb-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.sports-league-standings-mlb-column {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 4px;
+}
+
+.sports-league-standings-mlb-division-stack {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 5px;
+  align-items: stretch;
+}
+
+.sports-league-standings--mlb .sports-team-standings-block {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  padding: 5px 6px;
+}
+
+.sports-league-standings--mlb .sports-team-news-title {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  margin-bottom: 1px;
+}
+
+.sports-team-news-title--subtle {
+  opacity: 0.88;
+}
+
+.sports-league-standings--mlb .sports-standings-table {
+  height: 100%;
+  gap: 4px;
+  min-height: 0;
+  align-content: stretch;
+  grid-auto-rows: minmax(0, 1fr);
+}
+
+.sports-league-standings--mlb .sports-standings-row {
+  grid-template-columns: 12px minmax(0, 1fr) 42px 36px;
+  gap: 3px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  min-height: 0;
+}
+
+.sports-league-standings--mlb .sports-standings-rank,
+.sports-league-standings--mlb .sports-standings-record,
+.sports-league-standings--mlb .sports-standings-metric,
+.sports-league-standings--mlb .sports-standings-team {
+  font-size: 9.5px;
+}
+
+.sports-league-standings--mlb .sports-standings-logo {
+  width: 11px;
+  height: 11px;
+}
+
+.sports-league-standings--mlb-playoff {
+  gap: 3px;
+  padding: 4px 10px 5px;
+}
+
+.sports-league-standings--mlb-playoff .sports-league-standings-header {
+  gap: 6px;
+  min-height: 24px;
+  align-items: flex-start;
+}
+
+.sports-league-standings--mlb-playoff .sports-league-standings-logo {
+  width: 24px;
+  height: 24px;
+}
+
+.sports-league-standings--mlb-playoff .sports-feature-kicker {
+  font-size: 12px;
+  letter-spacing: 1.8px;
+  line-height: 1;
+  margin-bottom: 0;
+}
+
+.sports-league-standings-subtitle {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 1.3px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.68);
+  text-transform: uppercase;
+}
+
+.sports-mlb-playoff-layout {
+  display: grid;
+  grid-template-rows: minmax(0, 0.97fr) minmax(0, 0.97fr) minmax(0, 1.06fr);
+  gap: 6px;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.sports-mlb-playoff-wildcard-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.sports-mlb-playoff-league-panel {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 2px;
+}
+
+.sports-mlb-playoff-division-grid {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  align-items: stretch;
+}
+
+.sports-league-standings--mlb-playoff .sports-team-standings-block {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  padding: 5px 6px;
+}
+
+.sports-league-standings--mlb-playoff .sports-team-news-title {
+  font-size: 9.5px;
+  letter-spacing: 1.6px;
+  margin-bottom: 1px;
+}
+
+.sports-league-standings--mlb-playoff .sports-standings-table {
+  height: 100%;
+  min-height: 0;
+  gap: 3px;
+  align-content: stretch;
+  grid-auto-rows: minmax(0, 1fr);
+}
+
+.sports-league-standings--mlb-playoff .sports-standings-row {
+  grid-template-columns: 14px minmax(0, 1fr) 52px 40px;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  min-height: 0;
+}
+
+.sports-league-standings--mlb-playoff .sports-standings-rank,
+.sports-league-standings--mlb-playoff .sports-standings-record,
+.sports-league-standings--mlb-playoff .sports-standings-metric,
+.sports-league-standings--mlb-playoff .sports-standings-team {
+  font-size: 9.5px;
+}
+
+.sports-league-standings--mlb-playoff .sports-standings-logo {
+  width: 11px;
+  height: 11px;
+}
+
+.sports-mlb-playoff-league-panel > .sports-team-news-title,
+.sports-mlb-playoff-wildcard-panel > .sports-team-news-title {
+  font-size: 10.75px;
+  letter-spacing: 1.6px;
+  margin-bottom: 0;
+}
+
+.sports-mlb-playoff-wildcard-panel {
+  min-width: 0;
+  min-height: 0;
+}
+
+.sports-mlb-playoff-slots {
+  display: grid;
+  gap: 3px;
+  min-height: 0;
+}
+
+.sports-mlb-playoff-slot {
+  display: grid;
+  grid-template-columns: 36px 10px minmax(0, 1fr) 42px 28px;
+  gap: 4px;
+  align-items: center;
+  padding: 3px 5px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sports-mlb-playoff-slot--followed {
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.sports-mlb-playoff-slot-label,
+.sports-mlb-playoff-slot-record,
+.sports-mlb-playoff-slot-metric,
+.sports-mlb-playoff-slot-team {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.sports-mlb-playoff-slot-label {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.sports-mlb-playoff-slot-logo {
+  width: 10px;
+  height: 10px;
+  object-fit: contain;
+}
+
+.sports-mlb-playoff-slot-team {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sports-mlb-playoff-slot-record,
+.sports-mlb-playoff-slot-metric {
+  text-align: center;
 }
 
 .sports-knockout-board {
@@ -1158,6 +2096,55 @@
   white-space: nowrap;
 }
 
+.sports-mm-region-stack {
+  grid-column: 1 / -1;
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.sports-mm-region-stack .sports-mm-region-board {
+  height: auto;
+  min-height: 0;
+}
+
+.sports-mm-region-board--compact {
+  gap: 8px;
+  padding: 10px 12px 8px;
+}
+
+.sports-mm-region-board--compact .sports-mm-board-header {
+  gap: 12px;
+  padding-bottom: 6px;
+}
+
+.sports-mm-region-board--compact .sports-knockout-header-main {
+  gap: 10px;
+}
+
+.sports-mm-region-board--compact .sports-league-standings-logo {
+  width: 28px;
+  height: 28px;
+}
+
+.sports-mm-region-board--compact .sports-feature-kicker {
+  font-size: 17px;
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+}
+
+.sports-mm-region-board--compact .sports-knockout-subtitle {
+  font-size: 10px;
+  letter-spacing: 0.8px;
+}
+
+.sports-mm-region-board--compact .sports-mm-region-pill {
+  padding: 5px 8px;
+  font-size: 12px;
+  letter-spacing: 0.8px;
+}
+
 .sports-mm-region-grid {
   display: grid;
   gap: 10px;
@@ -1171,6 +2158,26 @@
 
 .sports-mm-region-grid--6 {
   grid-template-columns: 1.25fr 0.9fr 0.72fr 0.72fr 0.9fr 1.25fr;
+}
+
+.sports-mm-path-grid {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.sports-mm-path-grid--elite8,
+.sports-mm-path-grid--late-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sports-mm-path-grid--late-2 {
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+}
+
+.sports-mm-path-grid--late-3 {
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.18fr) minmax(0, 0.86fr);
 }
 
 .sports-generic-bracket-grid {
@@ -1210,6 +2217,13 @@
   display: grid;
   grid-template-rows: auto 1fr;
   gap: 8px;
+}
+
+.sports-mm-round--stage {
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(9, 17, 34, 0.46);
+  border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .sports-mm-round-title,
@@ -1280,6 +2294,345 @@
   padding: 7px 8px;
 }
 
+.sports-mm-path-center {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.sports-mm-path-grid--elite8 .sports-mm-path-center {
+  width: min(100%, 420px);
+  justify-self: center;
+}
+
+.sports-mm-elite8-bracket {
+  display: grid;
+  grid-template-columns: minmax(0, 0.96fr) 62px minmax(0, 1fr) 62px minmax(0, 0.96fr);
+  grid-template-rows: auto 1fr;
+  gap: 12px;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.sports-mm-region-board--compact .sports-mm-elite8-bracket {
+  grid-template-columns: minmax(0, 0.92fr) 42px minmax(0, 1fr) 42px minmax(0, 0.92fr);
+  gap: 8px;
+}
+
+.sports-mm-elite8-heading {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: end;
+  padding-left: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(255, 232, 171, 0.92);
+}
+
+.sports-mm-region-board--compact .sports-mm-elite8-heading {
+  font-size: 10px;
+  padding-left: 2px;
+}
+
+.sports-mm-elite8-feeders {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.sports-mm-region-board--compact .sports-mm-elite8-feeders {
+  gap: 10px;
+}
+
+.sports-mm-elite8-feeders .sports-mm-path-card,
+.sports-mm-elite8-feeders .sports-mm-winner-slot {
+  align-self: center;
+}
+
+.sports-mm-bracket-link {
+  grid-row: 2;
+  position: relative;
+  min-height: 0;
+}
+
+.sports-mm-bracket-link--inbound {
+  grid-column: 2;
+}
+
+.sports-mm-bracket-link--outbound {
+  grid-column: 4;
+}
+
+.sports-mm-bracket-link-join {
+  position: absolute;
+  top: 50%;
+  height: 2px;
+  background: rgba(255, 214, 102, 0.28);
+  transform: translateY(-50%);
+}
+
+.sports-mm-path-card,
+.sports-mm-next-round {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(9, 17, 34, 0.54);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sports-mm-region-board--compact .sports-mm-path-card,
+.sports-mm-region-board--compact .sports-mm-next-round {
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.sports-mm-path-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.sports-mm-region-board--compact .sports-mm-path-card-header {
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.sports-mm-path-round {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(255, 232, 171, 0.92);
+}
+
+.sports-mm-region-board--compact .sports-mm-path-round {
+  font-size: 10px;
+  letter-spacing: 0.8px;
+}
+
+.sports-mm-path-site {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.72);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  text-align: right;
+}
+
+.sports-mm-region-board--compact .sports-mm-path-site {
+  font-size: 9px;
+  letter-spacing: 0.4px;
+}
+
+.sports-mm-path-card .sports-mm-game {
+  padding: 12px 13px;
+  background: rgba(11, 19, 38, 0.82);
+}
+
+.sports-mm-region-board--compact .sports-mm-path-card .sports-mm-game {
+  padding: 9px 10px;
+}
+
+.sports-mm-path-card .sports-mm-team-row {
+  grid-template-columns: 20px minmax(0, 1fr) 28px;
+}
+
+.sports-mm-region-board--compact .sports-mm-path-card .sports-mm-team-row {
+  grid-template-columns: 16px minmax(0, 1fr) 24px;
+  gap: 5px;
+}
+
+.sports-mm-path-card .sports-mm-team-name {
+  font-size: 13.5px;
+}
+
+.sports-mm-region-board--compact .sports-mm-path-card .sports-mm-team-name {
+  font-size: 12px;
+}
+
+.sports-mm-path-card .sports-mm-team-score {
+  font-size: 15px;
+}
+
+.sports-mm-region-board--compact .sports-mm-path-card .sports-mm-team-score {
+  font-size: 13px;
+}
+
+.sports-mm-winner-slot {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 70px;
+  padding: 14px 14px;
+  border-radius: 10px;
+  background: rgba(11, 19, 38, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sports-mm-region-board--compact .sports-mm-winner-slot {
+  min-height: 56px;
+  padding: 10px 12px;
+  gap: 8px;
+}
+
+.sports-mm-winner-slot--empty {
+  background: rgba(11, 19, 38, 0.48);
+  border-style: dashed;
+  border-color: rgba(255, 214, 102, 0.18);
+}
+
+.sports-mm-winner-slot-seed {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 214, 102, 0.95);
+  text-align: center;
+}
+
+.sports-mm-region-board--compact .sports-mm-winner-slot-seed {
+  font-size: 11px;
+}
+
+.sports-mm-winner-slot-name {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sports-mm-region-board--compact .sports-mm-winner-slot-name {
+  font-size: 13px;
+}
+
+.sports-mm-path-center--elite8-bracket,
+.sports-mm-path-center--final-four {
+  align-content: center;
+}
+
+.sports-mm-path-center--elite8-bracket {
+  grid-column: 3;
+  grid-row: 2;
+  width: min(100%, 420px);
+  justify-self: center;
+}
+
+.sports-mm-path-center--final-four {
+  grid-column: 5;
+  grid-row: 2;
+  width: min(100%, 420px);
+  justify-self: center;
+}
+
+.sports-mm-region-board--compact .sports-mm-path-center--elite8-bracket,
+.sports-mm-region-board--compact .sports-mm-path-center--final-four {
+  width: min(100%, 320px);
+}
+
+.sports-mm-bracket-link--inbound::before,
+.sports-mm-bracket-link--inbound::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: calc(100% - 14px);
+  height: calc(25% - 1px);
+  border-right: 2px solid rgba(255, 214, 102, 0.28);
+}
+
+.sports-mm-bracket-link--inbound::before {
+  top: 25%;
+  border-top: 2px solid rgba(255, 214, 102, 0.28);
+  border-radius: 0 12px 0 0;
+}
+
+.sports-mm-bracket-link--inbound::after {
+  bottom: 25%;
+  border-bottom: 2px solid rgba(255, 214, 102, 0.28);
+  border-radius: 0 0 12px 0;
+}
+
+.sports-mm-bracket-link--inbound .sports-mm-bracket-link-join {
+  left: calc(100% - 14px);
+  right: 0;
+}
+
+.sports-mm-bracket-link--outbound .sports-mm-bracket-link-join {
+  left: 0;
+  right: 0;
+}
+
+.sports-mm-path-placeholder {
+  padding: 18px 14px;
+  border-radius: 8px;
+  background: rgba(11, 19, 38, 0.62);
+  border: 1px dashed rgba(255, 214, 102, 0.18);
+}
+
+.sports-mm-region-board--compact .sports-mm-path-placeholder {
+  padding: 12px 10px;
+}
+
+.sports-mm-path-placeholder-text {
+  font-size: 13px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.sports-mm-region-board--compact .sports-mm-path-placeholder-text {
+  font-size: 11px;
+}
+
+.sports-mm-path-advancement {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 214, 102, 0.08);
+  border: 1px solid rgba(255, 214, 102, 0.18);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(255, 232, 171, 0.94);
+}
+
+.sports-mm-next-round {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  background: rgba(255, 214, 102, 0.08);
+  border-color: rgba(255, 214, 102, 0.18);
+  align-self: center;
+}
+
+.sports-mm-next-round-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(255, 232, 171, 0.82);
+}
+
+.sports-mm-next-round-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(255, 245, 212, 0.96);
+}
+
+.sports-mm-next-round-copy {
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.78);
+}
+
 .sports-mm-team-row {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr) 22px;
@@ -1314,6 +2667,10 @@
   color: rgba(255, 255, 255, 0.7);
   letter-spacing: 0.4px;
   text-transform: uppercase;
+}
+
+.sports-mm-region-board--compact .sports-mm-status {
+  font-size: 9px;
 }
 
 .sports-mm-final-grid {
@@ -1491,7 +2848,7 @@
 
 .sports-standings-row {
   display: grid;
-  grid-template-columns: 34px 24px minmax(0, 1fr) 78px 64px;
+  grid-template-columns: 24px minmax(0, 1fr) 78px 64px;
   gap: 8px;
   align-items: center;
   padding: 8px 10px;
@@ -1500,7 +2857,7 @@
 }
 
 .sports-standings-row--soccer {
-  grid-template-columns: 34px 24px minmax(0, 1fr) 28px 78px 110px 64px;
+  grid-template-columns: 24px minmax(0, 1fr) 28px 78px 110px 64px;
 }
 
 .sports-standings-row--followed {
@@ -1578,6 +2935,92 @@
 
 .sports-standings-form-chip--l {
   background: #c0392b;
+}
+
+.sports-nhl-standings-table {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+}
+
+.sports-nhl-standings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) repeat(8, minmax(34px, 0.5fr)) minmax(52px, 0.8fr) minmax(44px, 0.55fr);
+  column-gap: 10px;
+  align-items: center;
+}
+
+.sports-nhl-standings-header-row {
+  padding: 0 2px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.sports-nhl-standings-header-cell {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.68);
+  text-align: center;
+  letter-spacing: 0.3px;
+}
+
+.sports-nhl-standings-header-cell--team {
+  text-align: left;
+}
+
+.sports-nhl-standings-header-cell--points {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 700;
+}
+
+.sports-nhl-standings-body {
+  display: grid;
+  min-height: 0;
+}
+
+.sports-nhl-standings-row {
+  min-height: 58px;
+  padding: 0 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.sports-nhl-standings-row--followed {
+  padding: 0 10px;
+  border-bottom-color: transparent;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sports-nhl-standings-cell {
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.sports-nhl-standings-cell--team {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  text-align: left;
+}
+
+.sports-nhl-standings-cell--points {
+  font-weight: 800;
+}
+
+.sports-nhl-standings-logo {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.sports-nhl-standings-team-name {
+  font-size: 17px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @keyframes pulse {
