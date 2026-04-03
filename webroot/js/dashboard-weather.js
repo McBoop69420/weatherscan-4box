@@ -454,28 +454,6 @@ function refreshWeatherPanel() {
   }
 }
 
-window.advanceWeatherscanDashboardSlide = function() {
-  if (!weatherCycler || !weatherCycler.isRunning || !weatherCycler.slides || weatherCycler.slides.length < 2) {
-    return false;
-  }
-
-  const nextIndex = (weatherCycler.currentIndex + 1) % weatherCycler.slides.length;
-  weatherCycler.goToSlide(nextIndex);
-  return true;
-};
-
-window.advanceSlidesNow = function() {
-  if (window.advanceWeatherscanDashboardSlide && window.advanceWeatherscanDashboardSlide(1)) {
-    return true;
-  }
-
-  if (window.advanceClassicSlides) {
-    return window.advanceClassicSlides() !== false;
-  }
-
-  return false;
-};
-
 function isArrowAdvanceEvent(event) {
   return (
     ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Left", "Right", "Up", "Down"].includes(event.key) ||

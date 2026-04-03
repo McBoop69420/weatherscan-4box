@@ -1,13 +1,13 @@
 const { app, BrowserWindow, globalShortcut, shell } = require('electron');
 
-function triggerSlideAdvance(win) {
+function triggerSlideAdvance(win, direction = 1) {
   if (!win || win.isDestroyed()) {
     return;
   }
 
   win.webContents.executeJavaScript(`
     (() => {
-      if (window.advanceSlidesNow && window.advanceSlidesNow()) {
+      if (window.advanceSlidesNow && window.advanceSlidesNow(${direction})) {
         return true;
       }
       return false;
@@ -60,23 +60,29 @@ function createWindow () {
     }
 
     event.preventDefault();
-    triggerSlideAdvance(win);
+    const direction = ['ArrowLeft', 'ArrowUp', 'Left', 'Up'].includes(input.key) ? -1 : 1;
+    triggerSlideAdvance(win, direction);
   });
 
-  const shortcutKeys = ['Left', 'Right', 'Up', 'Down'];
+  const shortcutKeys = [
+    { key: 'Left', direction: -1 },
+    { key: 'Right', direction: 1 },
+    { key: 'Up', direction: -1 },
+    { key: 'Down', direction: 1 }
+  ];
 
   win.on('focus', () => {
-    shortcutKeys.forEach((key) => {
-      globalShortcut.register(key, () => triggerSlideAdvance(win));
+    shortcutKeys.forEach(({ key, direction }) => {
+      globalShortcut.register(key, () => triggerSlideAdvance(win, direction));
     });
   });
 
   win.on('blur', () => {
-    shortcutKeys.forEach((key) => globalShortcut.unregister(key));
+    shortcutKeys.forEach(({ key }) => globalShortcut.unregister(key));
   });
 
   win.on('closed', () => {
-    shortcutKeys.forEach((key) => globalShortcut.unregister(key));
+    shortcutKeys.forEach(({ key }) => globalShortcut.unregister(key));
   });
 }
 

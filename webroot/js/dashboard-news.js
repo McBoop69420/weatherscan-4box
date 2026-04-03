@@ -14,7 +14,6 @@ const NEWS_SOURCE_LOGOS = {
   technology: 'https://www.google.com/s2/favicons?domain=npr.org&sz=64',
   local: 'https://www.google.com/s2/favicons?domain=news.google.com&sz=64',
   alerts: 'https://www.google.com/s2/favicons?domain=weather.gov&sz=64',
-  sports: 'https://www.google.com/s2/favicons?domain=espn.com&sz=64',
 };
 
 async function initNewsCycler() {
@@ -155,60 +154,6 @@ function renderWeatherAlertsSlide() {
       </div>
     `;
   }).join('');
-
-  $('.news-feed').html(`<div class="news-headlines-list">${html}</div>`);
-}
-
-function renderSportsScoresSlide() {
-  if (!sportsRawData || sportsRawData.length === 0) {
-    renderNewsPlaceholder('No sports data available');
-    return;
-  }
-
-  updateNewsHeader('SPORTS SCORES');
-
-  const items = [];
-  for (const league of sportsRawData) {
-    if (!league.events) continue;
-    for (const event of league.events) {
-      if (items.length >= 6) break;
-      const state = event.status?.type?.state || '';
-      if (state !== 'in' && state !== 'post') continue;
-
-      const comp = event.competitions?.[0];
-      const home = comp?.competitors?.find((competitor) => competitor.homeAway === 'home');
-      const away = comp?.competitors?.find((competitor) => competitor.homeAway === 'away');
-      if (!home || !away) continue;
-
-      const isLive = state === 'in';
-      const detail = event.status?.type?.shortDetail || (isLive ? 'In Progress' : 'Final');
-      items.push({
-        title: `${away.team?.shortDisplayName || ''} ${away.score} - ${home.score} ${home.team?.shortDisplayName || ''}`,
-        _meta: `${league.league} | ${detail}`,
-        _live: isLive,
-      });
-    }
-    if (items.length >= 6) break;
-  }
-
-  if (items.length === 0) {
-    renderNewsPlaceholder('No completed or live games');
-    return;
-  }
-
-  const logoHtml = `<img class="news-source-logo" src="${NEWS_SOURCE_LOGOS.sports}" alt="" onerror="this.style.display='none'">`;
-
-  const html = items.map((item) => `
-    <div class="news-headline ${item._live ? 'news-headline--live' : ''}">
-      <div class="news-headline-content">
-        <div class="news-headline-meta">
-          ${item._live ? '<span class="sports-live-dot"></span>' : ''}${escapeHtml(item._meta)}
-        </div>
-        <div class="news-headline-title">${escapeHtml(item.title)}</div>
-      </div>
-      ${logoHtml}
-    </div>
-  `).join('');
 
   $('.news-feed').html(`<div class="news-headlines-list">${html}</div>`);
 }

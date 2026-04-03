@@ -41,6 +41,140 @@ var satround = 0;
 var idx = 0;
 var gidx = 0;
 var htipidx = 0;
+var nativeClassicSetTimeout = window.setTimeout.bind(window);
+var trackedClassicSlideTimeouts = [];
+var captureClassicSlideTimeouts = false;
+
+window.setTimeout = function () {
+  var timeoutId = nativeClassicSetTimeout.apply(window, arguments);
+
+  if (captureClassicSlideTimeouts) {
+    trackedClassicSlideTimeouts.push(timeoutId);
+  }
+
+  return timeoutId;
+};
+
+function clearTrackedClassicSlideTimeouts() {
+  while (trackedClassicSlideTimeouts.length > 0) {
+    clearTimeout(trackedClassicSlideTimeouts.pop());
+  }
+}
+
+function runClassicSlideProgram(program) {
+  trackedClassicSlideTimeouts = [];
+  captureClassicSlideTimeouts = true;
+
+  try {
+    program();
+  } finally {
+    captureClassicSlideTimeouts = false;
+  }
+}
+
+function updateUpNextSkeletonForGroup(groupIndex) {
+  var lineupGroup =
+    slideSettings &&
+    slideSettings.order &&
+    slideSettings.order[0] &&
+    slideSettings.order[0].slideLineup &&
+    slideSettings.order[0].slideLineup[groupIndex];
+
+  if (!lineupGroup || lineupGroup.group == "intro") {
+    return;
+  }
+
+  $(".upnext-slide .skeleton").css({
+    background:
+      `transparent url(images/skeletons/upnext-slide-skeleton-` +
+      lineupGroup.group +
+      `.png) no-repeat`,
+    "background-size": "100% 100%",
+  });
+}
+
+function getClassicSlidePositions() {
+  var positions = [];
+  var lineup =
+    slideSettings &&
+    slideSettings.order &&
+    slideSettings.order[0] &&
+    slideSettings.order[0].slideLineup;
+
+  if (!lineup) {
+    return positions;
+  }
+
+  for (var groupIndex = 0; groupIndex < lineup.length; groupIndex++) {
+    var slides = lineup[groupIndex].slides || [];
+
+    for (var slideIndex = 0; slideIndex < slides.length; slideIndex++) {
+      positions.push({
+        groupIndex: groupIndex,
+        slideIndex: slideIndex,
+      });
+    }
+  }
+
+  return positions;
+}
+
+function getClassicSlideNavigationTarget(direction) {
+  var positions = getClassicSlidePositions();
+  var normalizedDirection = direction < 0 ? -1 : 1;
+  var currentPositionIndex = 0;
+
+  if (positions.length < 2) {
+    return null;
+  }
+
+  for (var i = 0; i < positions.length; i++) {
+    if (
+      positions[i].groupIndex == gidx &&
+      positions[i].slideIndex == idx
+    ) {
+      currentPositionIndex = i;
+      break;
+    }
+  }
+
+  var targetPositionIndex =
+    (currentPositionIndex + normalizedDirection + positions.length) %
+    positions.length;
+
+  return {
+    groupIndex: positions[targetPositionIndex].groupIndex,
+    slideIndex: positions[targetPositionIndex].slideIndex,
+    wrappedForward:
+      normalizedDirection > 0 &&
+      targetPositionIndex <= currentPositionIndex,
+  };
+}
+
+function resetClassicSlideStage() {
+  clearTrackedClassicSlideTimeouts();
+
+  try {
+    stopRadar();
+  } catch (error) {}
+
+  $("#slides").find("*").stop(true, true);
+  $("#slides").children().hide();
+  $("#slides .tempunavailable").hide();
+  $(".locradar-cont").show().attr("style", "");
+  $(".regradar-cont").attr("style", "");
+  $(".satradar-cont").attr("style", "");
+  $("#regradar").show();
+  $("#satradar").show();
+  $("#date-time").stop(true, true).show();
+  $("#provider")
+    .stop(true, true)
+    .css({
+      "margin-left": "0px",
+      "margin-top": "0px",
+    });
+}
+
 function slideCallBack(){
   $("#provider").css("margin-left", "0px");
     $("#provider").css("margin-top", "0px");
@@ -1229,7 +1363,7 @@ var slidePrograms = {
   };
 function slideKickOff() {
   allData();
-  $(".upnext-slide .skeleton").css({"background":`transparent url(images/skeletons/upnext-slide-skeleton-` + slideSettings.order[0].slideLineup[gidx].group + `.png) no-repeat`, "background-size": "100% 100%"});
+  updateUpNextSkeletonForGroup(gidx);
   showSlides();
   slideTitles = {
     "forecast": "Your Local Forecast",
@@ -1253,11 +1387,33 @@ function showSlides() {
         crawlCheck();
       }, 1000);
     }
-    if (slideSettings.order[0].slideLineup[gidx].group != "intro") {
-      $(".upnext-slide .skeleton").css({"background": `transparent url(images/skeletons/upnext-slide-skeleton-` + slideSettings.order[0].slideLineup[gidx].group + `.png) no-repeat`, "background-size": "100% 100%"});
-    }
+    updateUpNextSkeletonForGroup(gidx);
   }
   currentProgram = slidePrograms[slideSettings.order[0].slideLineup[gidx].slides[idx].function];
   currentDiv = slideDivs[slideSettings.order[0].slideLineup[gidx].slides[idx].function];
-  currentProgram();
+  runClassicSlideProgram(currentProgram);
 } //END OF showSlides() FUNCTION
+
+window.advanceClassicSlides = function (direction) {
+  var target = getClassicSlideNavigationTarget(direction || 1);
+
+  if (!target) {
+    return false;
+  }
+
+  resetClassicSlideStage();
+
+  gidx = target.groupIndex;
+  idx = target.slideIndex;
+
+  if (target.wrappedForward) {
+    allData();
+    nativeClassicSetTimeout(function () {
+      crawlCheck();
+    }, 1000);
+  }
+
+  updateUpNextSkeletonForGroup(gidx);
+  showSlides();
+  return true;
+};

@@ -118,9 +118,10 @@ async function initSportsCycler() {
   await ensureFollowedTeamPreviousDaySportsData(getFollowedTeams());
 
   const activeFollowedTeams = getActiveFollowedTeams();
-  await refreshFollowedTeamContext(activeFollowedTeams);
+  const favoriteLeagueItems = getFavoriteLeagueItems(activeFollowedTeams);
+  await refreshFollowedTeamContext(activeFollowedTeams, favoriteLeagueItems);
 
-  const slides = buildSportsSlides(activeFollowedTeams);
+  const slides = buildSportsSlides(activeFollowedTeams, favoriteLeagueItems);
 
   if (slides.length === 0) {
     slides.push(createPlaceholderSlide('No games scheduled today', '.sports-games-list'));
@@ -143,20 +144,24 @@ async function initSportsCycler() {
  * Pair slide:   both leagues have ≤9 games
  * Solo slide:   >9 games, or no suitable partner found
  */
-function buildSportsSlides(activeFollowedTeams = getActiveFollowedTeams()) {
+function buildSportsSlides(
+  activeFollowedTeams = getActiveFollowedTeams(),
+  favoriteLeagueItems = getFavoriteLeagueItems(activeFollowedTeams)
+) {
   const slides = [];
   const displayableFollowedTeams = activeFollowedTeams.filter(({ followedTeam }) => (
     !shouldSuppressDedicatedLeagueSlides(followedTeam?.league)
   ));
-  const followedTeamSlides = getFollowedTeamSlides(displayableFollowedTeams);
-  const favoriteLeagueNames = [...new Set(displayableFollowedTeams.map(({ followedTeam }) => followedTeam.league).filter(Boolean))];
+  const displayableFavoriteLeagueItems = favoriteLeagueItems.filter(({ followedTeam }) => (
+    !shouldSuppressDedicatedLeagueSlides(followedTeam?.league)
+  ));
+  const followedTeamSlides = getFollowedTeamSlides(displayableFollowedTeams, displayableFavoriteLeagueItems);
+  const favoriteLeagueNames = [...new Set(displayableFavoriteLeagueItems.map(({ followedTeam }) => followedTeam.league).filter(Boolean))];
 
   followedTeamSlides.forEach((slide) => slides.push(slide));
 
-  const soccerRoundupData = getSoccerRoundupSlideData(displayableFollowedTeams);
-  if (soccerRoundupData.length > 0) {
-    slides.push(() => renderSoccerRoundupStandingsSlide(soccerRoundupData));
-  }
+  const soccerRoundupSlides = getSoccerRoundupSlides(displayableFavoriteLeagueItems);
+  soccerRoundupSlides.forEach((slide) => slides.push(slide));
 
   // Collect active leagues with their games
   const activeLeagues = [];
@@ -173,12 +178,9 @@ function buildSportsSlides(activeFollowedTeams = getActiveFollowedTeams()) {
       continue;
     }
 
-    const games = getGamesForLeague(def.name, 16);
-    if (games.length > 0) {
-      // Prefer the logo ESPN returned for this league; fall back to our hardcoded URL
-      const rawLeague = sportsRawData ? sportsRawData.find(l => l.league === def.name) : null;
-      const logo = rawLeague?.logo || def.logo;
-      activeLeagues.push({ name: def.name, logo, games });
+    const leagueData = getLeagueSlideData(def.name);
+    if (leagueData) {
+      activeLeagues.push(leagueData);
     }
   }
 
@@ -364,38 +366,26 @@ function getMostRecentCompletedFollowedTeamGame(games = []) {
   )[0] || null;
 }
 
-async function ensureFollowedTeamPreviousDaySportsData(followedTeams = getFollowedTeams()) {
+async function ensureFollowedTeamPreviousDaySportsData() {
   const displayWindow = getFollowedTeamDisplayWindow();
   if (!displayWindow.usePreviousDayResults) {
     return followedTeamPreviousDaySportsData;
   }
 
-  const leagueNames = [...new Set(
-    (Array.isArray(followedTeams) ? followedTeams : [])
-      .map((followedTeam) => followedTeam?.league)
-      .filter(Boolean)
-  )];
-  const cacheKey = `${displayWindow.previousDayKey}:${leagueNames.slice().sort().join('|')}`;
+  const cacheKey = displayWindow.previousDayKey;
 
   if (followedTeamPreviousDaySportsDataKey === cacheKey) {
-    return followedTeamPreviousDaySportsData;
-  }
-
-  if (leagueNames.length === 0) {
-    followedTeamPreviousDaySportsData = [];
-    followedTeamPreviousDaySportsDataKey = cacheKey;
     return followedTeamPreviousDaySportsData;
   }
 
   try {
     followedTeamPreviousDaySportsData = await fetchSportsData({
       dateOffset: -1,
-      leagues: leagueNames,
       raw: true
     });
     followedTeamPreviousDaySportsDataKey = cacheKey;
   } catch (error) {
-    console.warn('[Sports] Previous-day favorite feed fetch failed:', error);
+    console.warn('[Sports] Previous-day sports feed fetch failed:', error);
     followedTeamPreviousDaySportsData = [];
     followedTeamPreviousDaySportsDataKey = '';
   }
@@ -405,10 +395,60 @@ async function ensureFollowedTeamPreviousDaySportsData(followedTeams = getFollow
 
 function getFollowedTeamPreviousDayGames(followedTeam, maxGames = 24) {
   const leagueName = followedTeam?.league || 'MLB';
-  return getGamesForLeagueFromData(followedTeamPreviousDaySportsData, leagueName, maxGames, (event) => {
-    const state = String(event?.status?.type?.state || '').toLowerCase();
-    return state === 'post' || Boolean(event?.status?.type?.completed);
-  });
+  return getPreviousDayCompletedGamesForLeague(leagueName, maxGames);
+}
+
+function findLeagueDataByName(sourceData, leagueName) {
+  return Array.isArray(sourceData)
+    ? sourceData.find((leagueData) => leagueData.league === leagueName)
+    : null;
+}
+
+function getPreviousDayCompletedGamesForLeague(leagueName, maxGames = 16) {
+  return getGamesForLeagueFromData(
+    followedTeamPreviousDaySportsData,
+    leagueName,
+    maxGames,
+    (event) => {
+      const state = String(event?.status?.type?.state || '').toLowerCase();
+      return state === 'post' || Boolean(event?.status?.type?.completed);
+    }
+  );
+}
+
+function getDisplayGamesForLeague(leagueName, maxGames = 16) {
+  const displayWindow = getFollowedTeamDisplayWindow();
+
+  if (displayWindow.usePreviousDayResults) {
+    const previousDayGames = getPreviousDayCompletedGamesForLeague(leagueName, maxGames);
+
+    if (previousDayGames.length > 0) {
+      return previousDayGames;
+    }
+  }
+
+  return getGamesForLeague(leagueName, maxGames);
+}
+
+function getLeagueDisplaySource(leagueName, maxGames = 16) {
+  const displayWindow = getFollowedTeamDisplayWindow();
+
+  if (displayWindow.usePreviousDayResults) {
+    const previousDayGames = getPreviousDayCompletedGamesForLeague(leagueName, maxGames);
+    if (previousDayGames.length > 0) {
+      return {
+        games: previousDayGames,
+        rawLeague: findLeagueDataByName(followedTeamPreviousDaySportsData, leagueName),
+        window: 'previous'
+      };
+    }
+  }
+
+  return {
+    games: getGamesForLeague(leagueName, maxGames),
+    rawLeague: findLeagueDataByName(sportsRawData, leagueName),
+    window: 'today'
+  };
 }
 
 function getFollowedTeamGameSelection(followedTeam) {
@@ -496,6 +536,53 @@ function getActiveFollowedTeams() {
   return activeItems;
 }
 
+function sortFollowedTeamItems(items = []) {
+  const leagueOrder = LEAGUE_DEFS.reduce((map, def, index) => {
+    map[def.name] = index;
+    return map;
+  }, {});
+
+  return [...items].sort((a, b) => {
+    const leagueRankA = leagueOrder[a?.followedTeam?.league] ?? Number.MAX_SAFE_INTEGER;
+    const leagueRankB = leagueOrder[b?.followedTeam?.league] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leagueRankA !== leagueRankB) {
+      return leagueRankA - leagueRankB;
+    }
+
+    return (a?.originalIndex ?? Number.MAX_SAFE_INTEGER) - (b?.originalIndex ?? Number.MAX_SAFE_INTEGER);
+  });
+}
+
+function getFavoriteLeagueItems(activeFollowedTeams = getActiveFollowedTeams()) {
+  const activeItemsByKey = activeFollowedTeams.reduce((map, item) => {
+    map[getFollowedTeamCacheKey(item.followedTeam)] = item;
+    return map;
+  }, {});
+
+  const favoriteItems = getFollowedTeams().map((followedTeam, originalIndex) => (
+    activeItemsByKey[getFollowedTeamCacheKey(followedTeam)] || {
+      followedTeam,
+      gameData: null,
+      selectionContext: null,
+      originalIndex
+    }
+  ));
+
+  return sortFollowedTeamItems(favoriteItems);
+}
+
+function groupFollowedItemsByLeague(items = []) {
+  return items.reduce((map, item) => {
+    const leagueName = item?.followedTeam?.league || 'Other';
+    if (!map[leagueName]) {
+      map[leagueName] = [];
+    }
+    map[leagueName].push(item);
+    return map;
+  }, {});
+}
+
 function compareFollowedTeamPriority(itemA, itemB) {
   const distanceA = getFollowedTeamDistanceFromLexington(itemA?.followedTeam);
   const distanceB = getFollowedTeamDistanceFromLexington(itemB?.followedTeam);
@@ -523,21 +610,16 @@ function getDistanceBetweenPoints(pointA, pointB) {
   return Math.sqrt((latDelta * latDelta) + (lonDelta * lonDelta));
 }
 
-function getFollowedTeamSlides(activeFollowedTeams) {
+function getFollowedTeamSlides(activeFollowedTeams, favoriteLeagueItems = activeFollowedTeams) {
   const slides = [];
-  const groupedByLeague = activeFollowedTeams.reduce((map, item) => {
-    const leagueName = item.followedTeam.league || 'Other';
-    if (!map[leagueName]) {
-      map[leagueName] = [];
-    }
-    map[leagueName].push(item);
-    return map;
-  }, {});
+  const groupedActiveByLeague = groupFollowedItemsByLeague(activeFollowedTeams);
+  const groupedFavoriteByLeague = groupFollowedItemsByLeague(favoriteLeagueItems);
 
-  Object.keys(groupedByLeague).forEach((leagueName) => {
-    const leagueItems = groupedByLeague[leagueName];
+  Object.keys(groupedFavoriteByLeague).forEach((leagueName) => {
+    const activeLeagueItems = groupedActiveByLeague[leagueName] || [];
+    const favoriteLeagueGroupItems = groupedFavoriteByLeague[leagueName];
 
-    leagueItems.forEach((item) => {
+    activeLeagueItems.forEach((item) => {
       slides.push(() => renderFollowedTeamCombinedSlide(item));
     });
 
@@ -546,7 +628,7 @@ function getFollowedTeamSlides(activeFollowedTeams) {
       slides.push(() => renderFavoriteLeagueScoreboardSlide(leagueData));
     }
 
-    getFavoriteLeagueContextSlides(leagueItems).forEach((slide) => slides.push(slide));
+    getFavoriteLeagueContextSlides(favoriteLeagueGroupItems).forEach((slide) => slides.push(slide));
   });
 
   return slides;
@@ -576,23 +658,23 @@ function getFavoriteLeagueContextSlides(leagueItems) {
 
 function getLeagueSlideData(leagueName) {
   const def = LEAGUE_DEFS.find((leagueDef) => leagueDef.name === leagueName);
-  const games = getGamesForLeague(leagueName, 16);
+  const displaySource = getLeagueDisplaySource(leagueName, 16);
+  const games = displaySource.games;
   if (!def || games.length === 0) {
     return null;
   }
 
-  const rawLeague = sportsRawData ? sportsRawData.find((league) => league.league === leagueName) : null;
   return {
     name: leagueName,
-    logo: rawLeague?.logo || def.logo,
-    seasonType: rawLeague?.seasonType || null,
+    logo: displaySource.rawLeague?.logo || def.logo,
+    seasonType: displaySource.rawLeague?.seasonType || null,
+    window: displaySource.window,
     games
   };
 }
 
 function getLeagueSeasonType(leagueName) {
-  const rawLeague = sportsRawData ? sportsRawData.find((league) => league.league === leagueName) : null;
-  return rawLeague?.seasonType || null;
+  return getLeagueDisplaySource(leagueName, 1).rawLeague?.seasonType || null;
 }
 
 function isSpringTrainingSeasonType(seasonType) {
@@ -632,7 +714,7 @@ function isMarchMadnessEvent(event, leagueName) {
 function shouldRenderKnockoutBracketSlide(leagueName) {
   const roundBasedKnockoutLeagues = ['UEFA CL', 'UEFA EL', 'UEFA Conference League'];
   const alwaysKnockoutLeagues = ['Concacaf Champions Cup', 'FA Cup', 'World Cup', 'WBC'];
-  const games = getGamesForLeague(leagueName, 16);
+  const games = getDisplayGamesForLeague(leagueName, 16);
   const hasMarchMadnessGames = MARCH_MADNESS_LEAGUES.has(leagueName)
     && games.some((gameData) => isMarchMadnessEvent(gameData?.event, leagueName));
 
@@ -861,10 +943,16 @@ function getFavoriteLeagueStandingsSlides(leagueItems) {
   return slides;
 }
 
-async function refreshFollowedTeamContext(activeFollowedTeams) {
+async function refreshFollowedTeamContext(
+  activeFollowedTeams,
+  favoriteLeagueItems = getFavoriteLeagueItems(activeFollowedTeams)
+) {
+  const leagueContextItems = Array.isArray(favoriteLeagueItems) && favoriteLeagueItems.length > 0
+    ? favoriteLeagueItems
+    : activeFollowedTeams;
   const leagueNames = [...new Set([
-    ...activeFollowedTeams.map(({ followedTeam }) => followedTeam.league).filter(Boolean),
-    ...getSoccerRoundupLeagueNames(activeFollowedTeams)
+    ...leagueContextItems.map(({ followedTeam }) => followedTeam.league).filter(Boolean),
+    ...getSoccerRoundupLeagueNames(leagueContextItems)
   ])];
   const bracketLeagueNames = [...MARCH_MADNESS_LEAGUES]
     .filter((leagueName) => shouldRenderKnockoutBracketSlide(leagueName));
@@ -876,7 +964,7 @@ async function refreshFollowedTeamContext(activeFollowedTeams) {
     ...teamRequests
   ]);
 
-  const soccerFormRequests = getSoccerFormRequests(activeFollowedTeams);
+  const soccerFormRequests = getSoccerFormRequests(leagueContextItems);
   await Promise.allSettled(soccerFormRequests);
 }
 
@@ -888,7 +976,7 @@ function getSoccerRoundupLeagueNames(activeFollowedTeams) {
       return false;
     }
 
-    return getGamesForLeague(leagueName, 16).length > 0;
+    return getDisplayGamesForLeague(leagueName, 16).length > 0;
   });
 }
 
@@ -905,7 +993,7 @@ function getSoccerRoundupSlideData(activeFollowedTeams) {
         name: group.name,
         entries: group.entries,
         teamIndex: -1
-      }, leagueName).slice(0, 5);
+      }, leagueName);
 
       if (rows.length === 0) {
         return null;
@@ -918,6 +1006,21 @@ function getSoccerRoundupSlideData(activeFollowedTeams) {
       };
     })
     .filter(Boolean);
+}
+
+function getSoccerRoundupSlides(activeFollowedTeams) {
+  const leagues = getSoccerRoundupSlideData(activeFollowedTeams);
+  if (leagues.length === 0) {
+    return [];
+  }
+
+  const slides = [];
+  for (let i = 0; i < leagues.length; i += 2) {
+    const leagueChunk = leagues.slice(i, i + 2);
+    slides.push(() => renderSoccerRoundupStandingsSlide(leagueChunk));
+  }
+
+  return slides;
 }
 
 async function fetchSportsData(options = {}) {
@@ -2933,7 +3036,7 @@ function getGenericKnockoutRoundGroups(leagueName, maxGames = 12) {
   const fallbackLabel = leagueData?.seasonType?.abbreviation || leagueData?.seasonType?.name || 'Knockout Round';
   const groupsByRound = new Map();
 
-  getGamesForLeague(leagueName, maxGames).forEach((gameData) => {
+  getDisplayGamesForLeague(leagueName, maxGames).forEach((gameData) => {
     const event = gameData?.event || {};
     const competition = event?.competitions?.[0] || {};
     const rawRoundLabel = getKnockoutRoundLabel(event, competition, fallbackLabel);
@@ -3072,7 +3175,7 @@ function getMarchMadnessScoreboardBracketData(leagueName) {
     championship: []
   };
 
-  getGamesForLeague(leagueName, 16).forEach((gameData) => {
+  getDisplayGamesForLeague(leagueName, 16).forEach((gameData) => {
     const game = createMarchMadnessGameFromScoreboard(gameData, leagueName);
     if (!game) {
       return;
@@ -3288,12 +3391,26 @@ function hasGamesForLeague(leagueName) {
   return getGamesForLeague(leagueName, 1).length > 0;
 }
 
+function resolveLeagueSlideData(leagueLike) {
+  const leagueName = typeof leagueLike === 'string'
+    ? leagueLike
+    : (leagueLike?.name || leagueLike?.league || '');
+
+  return leagueName ? getLeagueSlideData(leagueName) : null;
+}
+
 /**
  * Render a single league taking the full slide (up to 15 games)
  */
 function renderSingleLeagueSlide(league) {
-  let html = buildLeagueHeaderHTML(league);
-  league.games.slice(0, 16).forEach(game => { html += renderGameCard(game); });
+  const leagueData = resolveLeagueSlideData(league);
+  if (!leagueData) {
+    $('.sports-games-list').html('');
+    return;
+  }
+
+  let html = buildLeagueHeaderHTML(leagueData);
+  leagueData.games.slice(0, 16).forEach(game => { html += renderGameCard(game); });
   $('.sports-games-list').html(html);
 }
 
@@ -3665,8 +3782,14 @@ function renderFollowedTeamCombinedSlide(item) {
 }
 
 function renderFavoriteLeagueScoreboardSlide(league) {
-  let html = buildLeagueHeaderHTML(league);
-  league.games.slice(0, 16).forEach((game) => {
+  const leagueData = resolveLeagueSlideData(league);
+  if (!leagueData) {
+    $('.sports-games-list').html('');
+    return;
+  }
+
+  let html = buildLeagueHeaderHTML(leagueData);
+  leagueData.games.slice(0, 16).forEach((game) => {
     html += renderGameCard(game);
   });
   $('.sports-games-list').html(html);
@@ -4030,7 +4153,7 @@ function renderFavoriteLeagueStandingsSlide(leagueItems, groupsOverride) {
 function renderFavoriteLeagueKnockoutSlide(leagueName) {
   const leagueData = getLeagueSlideData(leagueName);
   const seasonType = getLeagueSeasonType(leagueName);
-  const games = getGamesForLeague(leagueName, 8);
+  const games = getDisplayGamesForLeague(leagueName, 8);
   const branding = getMarchMadnessBranding(
     leagueName,
     MARCH_MADNESS_LEAGUES.has(leagueName)
@@ -4193,20 +4316,24 @@ function renderSoccerRoundupStandingsSlide(leagues) {
           <div class="sports-feature-kicker">SOCCER TABLES</div>
         </div>
       </div>
-      <div class="sports-soccer-roundup-grid sports-soccer-roundup-grid--${leagues.length > 2 ? 'quad' : 'double'}">
+      <div class="sports-soccer-roundup-grid sports-soccer-roundup-grid--${leagues.length > 1 ? 'double' : 'single'}">
         ${leagues.map((league) => `
           <div class="sports-soccer-roundup-card">
             <div class="sports-soccer-roundup-header">
               <img class="sports-soccer-roundup-logo" src="${league.logo || ''}" alt="${league.leagueName}" onerror="this.style.display='none'">
               <div class="sports-soccer-roundup-title">${league.leagueName}</div>
             </div>
-            <div class="sports-soccer-roundup-table">
-              ${league.rows.map((row) => `
-                <div class="sports-soccer-roundup-row ${row.isFollowed ? 'sports-soccer-roundup-row--followed' : ''}">
-                  <div class="sports-soccer-roundup-rank">${row.rank}</div>
-                  <div class="sports-soccer-roundup-team">${row.teamName}</div>
-                  <div class="sports-soccer-roundup-record">${row.record}</div>
-                  <div class="sports-soccer-roundup-points">${row.metric}</div>
+            <div class="sports-soccer-roundup-table sports-soccer-roundup-table--${league.rows.length > 10 ? 'split' : 'single'}">
+              ${splitSoccerRoundupRows(league.rows).map((columnRows) => `
+                <div class="sports-soccer-roundup-column">
+                  ${columnRows.map((row) => `
+                    <div class="sports-soccer-roundup-row ${row.isFollowed ? 'sports-soccer-roundup-row--followed' : ''}">
+                      <div class="sports-soccer-roundup-rank">${row.rank}</div>
+                      <div class="sports-soccer-roundup-team">${row.teamName}</div>
+                      <div class="sports-soccer-roundup-record">${row.record}</div>
+                      <div class="sports-soccer-roundup-points">${row.metric}</div>
+                    </div>
+                  `).join('')}
                 </div>
               `).join('')}
             </div>
@@ -4215,6 +4342,19 @@ function renderSoccerRoundupStandingsSlide(leagues) {
       </div>
     </div>
   `);
+}
+
+function splitSoccerRoundupRows(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return [];
+  }
+
+  if (rows.length <= 10) {
+    return [rows];
+  }
+
+  const midpoint = Math.ceil(rows.length / 2);
+  return [rows.slice(0, midpoint), rows.slice(midpoint)];
 }
 
 function buildStandingsTableMarkup(rows) {
@@ -4235,11 +4375,18 @@ function buildStandingsTableMarkup(rows) {
  * Render two leagues sharing one slide (up to 9 games each)
  */
 function renderCombinedSlide(leagueA, leagueB) {
-  let html = buildLeagueHeaderHTML(leagueA);
-  leagueA.games.slice(0, 9).forEach(game => { html += renderGameCard(game); });
+  const leagueDataA = resolveLeagueSlideData(leagueA);
+  const leagueDataB = resolveLeagueSlideData(leagueB);
+  if (!leagueDataA || !leagueDataB) {
+    $('.sports-games-list').html('');
+    return;
+  }
 
-  html += buildLeagueHeaderHTML(leagueB, true);
-  leagueB.games.slice(0, 9).forEach(game => { html += renderGameCard(game); });
+  let html = buildLeagueHeaderHTML(leagueDataA);
+  leagueDataA.games.slice(0, 9).forEach(game => { html += renderGameCard(game); });
+
+  html += buildLeagueHeaderHTML(leagueDataB, true);
+  leagueDataB.games.slice(0, 9).forEach(game => { html += renderGameCard(game); });
 
   $('.sports-games-list').html(html);
 }
@@ -4248,14 +4395,22 @@ function renderCombinedSlide(leagueA, leagueB) {
  * Render three leagues sharing one slide (up to 5 games each, all have <6)
  */
 function renderTripleSlide(leagueA, leagueB, leagueC) {
-  let html = buildLeagueHeaderHTML(leagueA);
-  leagueA.games.slice(0, 5).forEach(game => { html += renderGameCard(game); });
+  const leagueDataA = resolveLeagueSlideData(leagueA);
+  const leagueDataB = resolveLeagueSlideData(leagueB);
+  const leagueDataC = resolveLeagueSlideData(leagueC);
+  if (!leagueDataA || !leagueDataB || !leagueDataC) {
+    $('.sports-games-list').html('');
+    return;
+  }
 
-  html += buildLeagueHeaderHTML(leagueB, true);
-  leagueB.games.slice(0, 5).forEach(game => { html += renderGameCard(game); });
+  let html = buildLeagueHeaderHTML(leagueDataA);
+  leagueDataA.games.slice(0, 5).forEach(game => { html += renderGameCard(game); });
 
-  html += buildLeagueHeaderHTML(leagueC, true);
-  leagueC.games.slice(0, 5).forEach(game => { html += renderGameCard(game); });
+  html += buildLeagueHeaderHTML(leagueDataB, true);
+  leagueDataB.games.slice(0, 5).forEach(game => { html += renderGameCard(game); });
+
+  html += buildLeagueHeaderHTML(leagueDataC, true);
+  leagueDataC.games.slice(0, 5).forEach(game => { html += renderGameCard(game); });
 
   $('.sports-games-list').html(html);
 }
@@ -4642,11 +4797,6 @@ function renderBaseballLiveCard(gameData, teams) {
 }
 
 function renderBaseballFinalCard(gameData, teams, statusText) {
-  const details = getBaseballFinalDetails(gameData);
-  if (!details) {
-    return '';
-  }
-
   const {
     awayTeam,
     homeTeam,
@@ -4685,24 +4835,6 @@ function renderBaseballFinalCard(gameData, teams, statusText) {
         })}
       </div>
       <div class="sports-status final">${statusText}</div>
-      <div class="sports-baseball-final-meta">
-        ${details.decisions.length > 0 ? `
-          <div class="sports-baseball-final-decisions sports-baseball-final-decisions--${Math.min(details.decisions.length, 3)}">
-            ${details.decisions.map((decision) => `
-              <span class="sports-baseball-final-decision">
-                <span class="sports-baseball-final-label">${decision.label}</span>
-                <span class="sports-baseball-final-value">${decision.name}</span>
-              </span>
-            `).join('')}
-          </div>
-        ` : ''}
-        ${details.scoringSummaryText && details.scoringSummaryLabel ? `
-          <div class="sports-baseball-meta-line sports-baseball-final-homers">
-            <span class="sports-baseball-meta-label">${details.scoringSummaryLabel}</span>
-            <span class="sports-baseball-meta-value">${details.scoringSummaryText}</span>
-          </div>
-        ` : ''}
-      </div>
     </div>
   `;
 }
@@ -4890,9 +5022,10 @@ async function refreshSportsPanel() {
   await ensureFollowedTeamPreviousDaySportsData(getFollowedTeams());
 
   const activeFollowedTeams = getActiveFollowedTeams();
-  await refreshFollowedTeamContext(activeFollowedTeams);
+  const favoriteLeagueItems = getFavoriteLeagueItems(activeFollowedTeams);
+  await refreshFollowedTeamContext(activeFollowedTeams, favoriteLeagueItems);
 
-  const slides = buildSportsSlides(activeFollowedTeams);
+  const slides = buildSportsSlides(activeFollowedTeams, favoriteLeagueItems);
   if (slides.length === 0) {
     slides.push(createPlaceholderSlide('No games scheduled today', '.sports-games-list'));
   }

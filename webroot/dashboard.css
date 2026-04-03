@@ -124,7 +124,7 @@
 
 /* Tighter padding for sports panel to maximize game space */
 .panel-sports .panel-content {
-  padding: 10px 12px;
+  padding: 8px 10px;
   overflow: hidden;
 }
 
@@ -133,13 +133,13 @@
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
-  margin-bottom: 4px;
-  padding-bottom: 8px;
+  margin-bottom: 3px;
+  padding-bottom: 6px;
   border-bottom: 2px solid rgba(255, 255, 255, 0.2);
 }
 
 .sports-league-header--second {
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .sports-league-header img {
@@ -160,7 +160,7 @@
 .sports-games-list {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
+  gap: 5px;
 }
 
 /* Individual game cards */
@@ -172,7 +172,7 @@
 
 .sports-game {
   background: rgba(0, 0, 0, 0.35);
-  padding: 6px 8px;
+  padding: 5px 7px;
   border-radius: 5px;
   border-left: 3px solid rgba(52, 152, 219, 0.6);
   display: flex;
@@ -310,8 +310,8 @@
 }
 
 .sports-game--baseball {
-  padding: 8px 9px;
-  gap: 5px;
+  padding: 7px 8px;
+  gap: 4px;
   justify-content: flex-start;
 }
 
@@ -375,11 +375,11 @@
 }
 
 .sports-game--final-baseball {
-  gap: 5px;
+  gap: 3px;
 }
 
 .sports-game--pregame-baseball {
-  gap: 6px;
+  gap: 4px;
 }
 
 .sports-game-matchup--live-baseball {
@@ -2764,19 +2764,22 @@
 .sports-soccer-roundup-grid {
   display: grid;
   gap: 8px;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.sports-soccer-roundup-grid--single {
+  grid-template-columns: 1fr;
 }
 
 .sports-soccer-roundup-grid--double {
   grid-template-columns: 1fr 1fr;
 }
 
-.sports-soccer-roundup-grid--quad {
-  grid-template-columns: 1fr 1fr;
-  grid-auto-rows: minmax(0, 1fr);
-}
-
 .sports-soccer-roundup-card {
   min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
   padding: 8px 10px;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.18);
@@ -2804,7 +2807,23 @@
 
 .sports-soccer-roundup-table {
   display: grid;
+  min-height: 0;
+}
+
+.sports-soccer-roundup-table--single {
+  grid-template-columns: 1fr;
+}
+
+.sports-soccer-roundup-table--split {
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+.sports-soccer-roundup-column {
+  display: grid;
   gap: 3px;
+  align-content: start;
 }
 
 .sports-soccer-roundup-row {

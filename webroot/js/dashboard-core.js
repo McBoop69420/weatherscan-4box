@@ -279,16 +279,3 @@ function createPlaceholderSlide(message, containerSelector) {
     `);
   };
 }
-
-/**
- * Stagger the start of multiple cyclers
- * @param {Array} cyclers - Array of PanelCycler instances
- * @param {Number} delay - Delay in ms between each start
- */
-function staggeredStart(cyclers, delay = 500) {
-  cyclers.forEach((cycler, index) => {
-    setTimeout(() => {
-      cycler.start();
-    }, index * delay);
-  });
-}

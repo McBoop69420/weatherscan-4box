@@ -1,53 +1,111 @@
-![](https://media.discordapp.net/attachments/1059356760990826536/1367233544291614881/wslocalbannermist.png?ex=68644276&is=6862f0f6&hm=86800e66c65c8b01512b1615f511531b14405e04e60cc53f5b6c508a759649c0&=&format=webp&quality=lossless&width=1860&height=336)
+# Weatherscan Local XL
 
-------------
+A fan-made recreation of the classic Weatherscan Local experience, built with HTML, CSS, JavaScript, and Node.js.
 
-**Weatherscan Local XL** is a simulated recreation of "Weatherscan Local" by The Weather Channel in HTML/CSS/JS, by ***mist weather media***
+![Current Conditions](docs/screenshots/current-conditions.png)
 
-Best used with mainland United States locations
+## Highlights
 
-Best used with Google Chrome on Windows
+- Recreates the on-air Weatherscan Local look and pacing for desktop playback.
+- Pulls live weather data, animated radar, alerts, almanac details, airports, golf, and more.
+- Includes local, extra local, nearby cities, airport, health, golf, and Spanish-language slide groups.
+- Ships with built-in sports, standings, schedule, bracket, and news endpoints for richer dashboard content.
+- Can run in a browser or inside the included Electron wrapper for a TV-style kiosk experience.
 
-Online demo: [local.weatherscan.net](https://local.weatherscan.net)
+## Screenshots
 
-© Mist Weather Media 2025.
+| Current Conditions | Local Doppler |
+| --- | --- |
+| ![Current Conditions](docs/screenshots/current-conditions.png) | ![Local Doppler](docs/screenshots/local-doppler.png) |
 
-------------
+| Extended Forecast | Setup Wizard |
+| --- | --- |
+| ![Extended Forecast](docs/screenshots/extended-forecast.png) | ![Setup Wizard](webroot/images/setup/welcome-setup.png) |
 
-**Special thanks to these talented minds who made this project possible!**
+## Quick Start
 
-**Joe Molinelli (TheGoldDiamond9)** - Lead Developer  
-**COLSTER** - Lead Designer / Developer (CSS)  
-**PicelBoi** - Developer (Radar)  
-**JensonWx** - Developer (HTML)  
-**SSPWXR** - Developer (Express Conversion)  
-**zachNet** - Audio Engineer  
+### Requirements
 
-and the rest of the Mist Creative Team for their support!
+- Node.js 18 or newer
+- A Weather Company API key
+- A Mapbox API key
 
-------------
+### 1. Install dependencies
 
-Need support beyond the scope of this README? Have any questions? Feel free to join our Discord for support!
+```bash
+npm install
+```
 
-[***mist weather media*** on Discord](https://discord.gg/hV2w5sZQxz)
+### 2. Create your local config
 
-------------
+Copy `webroot/js/config.example.js` to `webroot/js/config.js`, then add your real API keys.
 
-Are you a developer? Pull requests are welcome! If you find a bug and fix it yourself, submit one with the fixed code and it may be merged into the main branch!
+`config.js` is intentionally ignored by Git so your local keys stay out of the repository.
 
-# Initial Setup
+### 3. Start the local server
 
-1. Install [node.js LTS](https://nodejs.org/en/).
-2. Acquire *weather.com* and *mapbox.com* API keys. These are required for weather data and radar frames respectively.
-3. Go to `/webroot/js` and open `config.js`.
-4. Line 1 is where your *weather.com*  API key goes. Replace `"YOUR_API_KEY"` with your *weather.com* API key.
-5. Line 2 is where your *mapbox.com*  API key goes. Replace `"YOUR_API_KEY"` with your *mapbox.com* API key.
-6. Save your changes to `config.js` and close out of it.
-7. In terminal / command prompt within the webroot directory, run `npm install`. This will install all dependencies required to run.
-8. In terminal / command prompt within the webroot directory, run `npm start`. This will start a local web server, which is required to run the sim.
+```bash
+npm start
+```
 
-------------
+The app serves from:
 
-Enjoy the nostalgia! You're all set.
+```text
+http://127.0.0.1:8080
+```
 
-Many thanks for using our simulator! We hope you like it.
+### 4. Optional: run the desktop wrapper
+
+If you want the Electron shell:
+
+```bash
+cd electron-wrapper
+npm install
+cd ..
+node launcher.js
+```
+
+## Configuration Notes
+
+- The setup wizard can walk through location, airport, golf, and package selection.
+- If you prefer JSON-based setup, start from `webroot/configs/templateconfig.json`.
+- The simulator is best suited for mainland United States locations.
+- Chrome, Edge, and the included Electron wrapper give the most consistent results on Windows.
+
+## Project Layout
+
+```text
+.
+|-- app.js                   # Express server and data endpoints
+|-- launcher.js              # Starts the local server plus Electron wrapper
+|-- electron-wrapper/        # Desktop shell
+|-- webroot/
+|   |-- index.html           # Main simulator UI
+|   |-- dashboard.css        # 4-box dashboard styling
+|   |-- weatherscan.css      # Classic slide styling
+|   |-- js/                  # Client logic, data loading, slides, radar, dashboard
+|   |-- images/              # Slide art, maps, provider logos, setup graphics
+|   `-- configs/             # JSON setup templates
+`-- docs/screenshots/        # GitHub README screenshots
+```
+
+## Credits
+
+Special thanks to the Mist Weather Media team and contributors who helped bring the simulator together.
+
+- Joe Molinelli (`TheGoldDiamond9`) - Lead Developer
+- COLSTER - Lead Designer / Developer (CSS)
+- PicelBoi - Developer (Radar)
+- JensonWx - Developer (HTML)
+- SSPWXR - Developer (Express Conversion)
+- zachNet - Audio Engineer
+
+## Support
+
+Need help, want to share feedback, or just want to talk weather media?
+
+- Discord: [mist weather media](https://discord.gg/hV2w5sZQxz)
+
+## License
+
+This project is released under the terms in [LICENSE](LICENSE).
